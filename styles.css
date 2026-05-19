@@ -430,25 +430,33 @@ p {
 .sidebar-logo {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  font-weight: 700;
-  font-size: var(--font-size-base);
+  max-width: 116px;
   white-space: nowrap;
   transition: opacity 0.2s ease;
 }
 
-.sidebar.collapsed .sidebar-logo {
+.brand-logo-img {
+  display: block;
+  width: auto;
+  max-width: 116px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.brand-logo-dark {
   display: none;
 }
 
-.sidebar-logo .logo-main {
-  color: var(--color-primary);
+body.dark-mode .brand-logo-light {
+  display: none;
 }
 
-.sidebar-logo .logo-sub {
-  color: var(--color-text-secondary);
-  font-weight: 400;
-  font-size: var(--font-size-sm);
+body.dark-mode .brand-logo-dark {
+  display: block;
+}
+
+.sidebar.collapsed .sidebar-logo {
+  display: none;
 }
 
 .sidebar-toggle-btn {
@@ -719,18 +727,8 @@ p {
 
 .mobile-logo {
   margin-left: var(--spacing-md);
-  font-weight: 700;
-  font-size: var(--font-size-lg);
-}
-
-.mobile-logo .logo-main {
-  color: var(--color-primary);
-}
-
-.mobile-logo .logo-sub {
-  color: var(--color-text-secondary);
-  font-weight: 400;
-  font-size: var(--font-size-sm);
+  display: flex;
+  align-items: center;
 }
 
 .sidebar-overlay {

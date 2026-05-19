@@ -2,6 +2,19 @@
 // AROOSH'S ONLINE TUTORS - COMPLETE APPLICATION REDESIGNED
 // ============================================================================
 
+const BRAND_LOGOS = {
+  light: 'aroosh-logo-light.jpg.jpeg',
+  dark: 'aroosh-logo-dark.png'
+};
+
+function updateFaviconTheme() {
+  const favicon = document.getElementById('dynamic-favicon');
+  if (!favicon) return;
+  const isDark = document.body.classList.contains('dark-mode');
+  favicon.href = isDark ? BRAND_LOGOS.dark : BRAND_LOGOS.light;
+  favicon.type = isDark ? 'image/png' : 'image/jpeg';
+}
+
 // Global Sanitization Helper
 function sanitize(str) {
   if (str === null || str === undefined) return '';
@@ -23,11 +36,13 @@ const savedDarkMode = localStorage.getItem('darkMode') === 'true';
 if (savedDarkMode) {
   document.body.classList.add('dark-mode');
 }
+updateFaviconTheme();
 
 // Dark Mode Toggle Export
 window.toggleDarkMode = () => {
   const isDark = document.body.classList.toggle('dark-mode');
   localStorage.setItem('darkMode', isDark ? 'true' : 'false');
+  updateFaviconTheme();
   if (typeof renderSidebar === 'function') {
     renderSidebar();
   }
@@ -4618,6 +4633,7 @@ function renderSidebar() {
 
   const isDark = document.body.classList.contains('dark-mode');
   const darkIcon = isDark ? '☀️' : '🌙';
+  const logoSrc = isDark ? BRAND_LOGOS.dark : BRAND_LOGOS.light;
 
   // Dynamic brand block handles desktop collapsed formatting beautifully
   const brandControls = isCollapsed 
@@ -4628,8 +4644,7 @@ function renderSidebar() {
     `
     : `
       <div class="sidebar-logo">
-        <span class="logo-main" style="color: var(--color-primary);">Aroosh</span>
-        <span class="logo-sub" style="color: var(--color-text-secondary); font-weight: 400; font-size: var(--font-size-sm);">Tutors</span>
+        <img src="${logoSrc}" alt="Aroosh Tutors" class="brand-logo-img">
       </div>
       <div style="display: flex; align-items: center; gap: 6px;">
         <button onclick="window.toggleDarkMode()" class="btn btn-ghost btn-sm" style="padding: 4px; font-size: 16px; border: none; background: transparent; cursor: pointer;" title="Toggle Dark/Light Mode">${darkIcon}</button>
