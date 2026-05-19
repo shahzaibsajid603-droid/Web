@@ -4479,7 +4479,7 @@ class WhatsAppComponent {
 // Initialize WhatsApp
 document.addEventListener('DOMContentLoaded', () => {
   window.whatsappComponent = new WhatsAppComponent({
-    phoneNumber: '+1234567890'
+    phoneNumber: '+923354979890'
   });
 });
 
