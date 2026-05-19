@@ -906,6 +906,9 @@ class Router {
       if (typeof renderSidebar === 'function') {
         renderSidebar();
       }
+      if (typeof injectFooter === 'function') {
+        injectFooter();
+      }
     } else {
       this.navigate('/');
     }
@@ -4482,6 +4485,82 @@ document.addEventListener('DOMContentLoaded', () => {
     phoneNumber: '+923354979890'
   });
 });
+
+// ============================================================================
+// FOOTER COMPONENT
+// ============================================================================
+
+function getFooterHTML() {
+  const year = new Date().getFullYear();
+  return `
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-grid">
+          <div class="footer-col footer-brand-col">
+            <div class="footer-logo">
+              <span class="footer-logo-main">Aroosh</span>
+              <span class="footer-logo-sub">Tutors</span>
+            </div>
+            <p class="footer-tagline">Expert online tutoring for every subject. Flexible scheduling, personalized learning, and real results.</p>
+            <div class="footer-social">
+              <a href="https://wa.me/923354979890" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" class="footer-social-link">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.67-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.076 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>
+              </a>
+              <a href="mailto:contact@arooshtutors.com" aria-label="Email" class="footer-social-link">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="footer-col">
+            <h4 class="footer-heading">Quick Links</h4>
+            <ul class="footer-links">
+              <li><a href="#/" onclick="router.navigate('/')">Home</a></li>
+              <li><a href="#/tutors" onclick="router.navigate('/tutors')">Find Tutors</a></li>
+              <li><a href="#/leaderboard" onclick="router.navigate('/leaderboard')">Leaderboard</a></li>
+              <li><a href="#/ai-chatbot" onclick="router.navigate('/ai-chatbot')">AI Chatbot</a></li>
+            </ul>
+          </div>
+
+          <div class="footer-col">
+            <h4 class="footer-heading">For Students</h4>
+            <ul class="footer-links">
+              <li><a href="#/signup/student" onclick="router.navigate('/signup/student')">Sign Up as Student</a></li>
+              <li><a href="#/ai-tutor-matching" onclick="router.navigate('/ai-tutor-matching')">AI Tutor Match</a></li>
+              <li><a href="#/ai-grading" onclick="router.navigate('/ai-grading')">AI Grading</a></li>
+              <li><a href="#/assignments" onclick="router.navigate('/assignments')">Assignments</a></li>
+            </ul>
+          </div>
+
+          <div class="footer-col">
+            <h4 class="footer-heading">For Tutors</h4>
+            <ul class="footer-links">
+              <li><a href="#/signup/tutor" onclick="router.navigate('/signup/tutor')">Sign Up as Tutor</a></li>
+              <li><a href="#/schedule" onclick="router.navigate('/schedule')">Schedule & Slots</a></li>
+              <li><a href="#/video-call" onclick="router.navigate('/video-call')">Video Classroom</a></li>
+              <li><a href="#/chat" onclick="router.navigate('/chat')">Messages</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="footer-divider"></div>
+
+        <div class="footer-bottom">
+          <p class="footer-copyright">&copy; ${year} Aroosh Online Tutors. All rights reserved.</p>
+          <p class="footer-credit">Made by <strong>M Shahzaib Sajid</strong></p>
+        </div>
+      </div>
+    </footer>
+  `;
+}
+
+function injectFooter() {
+  const app = document.getElementById('app');
+  if (!app) return;
+  const existing = app.querySelector('.site-footer');
+  if (existing) existing.remove();
+  app.insertAdjacentHTML('beforeend', getFooterHTML());
+}
 
 // ============================================================================
 // 5. ROUTER REGISTRATION
