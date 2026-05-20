@@ -4040,8 +4040,7 @@ function getFooterHTML() {
         <div class="footer-grid">
           <div class="footer-col footer-brand-col">
             <div class="footer-logo">
-              <span class="footer-logo-main">Aroosh</span>
-              <span class="footer-logo-sub">Tutors</span>
+              <img src="aroosh-logo-dark.png" alt="Aroosh Online Tutors" class="logo-img footer-logo-img">
             </div>
             <p class="footer-tagline">Expert online tutoring for every subject. Flexible scheduling, personalized learning, and real results.</p>
             <div class="footer-social">
@@ -4249,8 +4248,8 @@ function renderSidebar() {
     `
     : `
       <div class="sidebar-logo">
-        <span class="logo-main" style="color: var(--color-primary);">Aroosh</span>
-        <span class="logo-sub" style="color: var(--color-text-secondary); font-weight: 400; font-size: var(--font-size-sm);">Tutors</span>
+        <img src="aroosh-logo-light.jpg.jpeg" alt="Aroosh Online Tutors" class="logo-img logo-light">
+        <img src="aroosh-logo-dark.png" alt="Aroosh Online Tutors" class="logo-img logo-dark">
       </div>
       <div style="display: flex; align-items: center; gap: 6px;">
         <button onclick="window.toggleDarkMode()" class="btn btn-ghost btn-sm" style="padding: 4px; font-size: 16px; border: none; background: transparent; cursor: pointer;" title="Toggle Dark/Light Mode">${darkIcon}</button>

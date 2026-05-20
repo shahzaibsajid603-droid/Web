@@ -3540,3 +3540,38 @@ body.dark-mode .footer-social-link {
 body.dark-mode .footer-divider {
   background: #0f172a;
 }
+
+/* ============================================================
+   LOGO IMAGES - Light/Dark mode switching
+   ============================================================ */
+.logo-img {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.logo-dark {
+  display: none;
+}
+
+body.dark-mode .logo-light {
+  display: none;
+}
+
+body.dark-mode .logo-dark {
+  display: block;
+}
+
+.sidebar-logo .logo-img {
+  height: 36px;
+}
+
+.mobile-logo .logo-img {
+  height: 36px;
+}
+
+.footer-logo-img {
+  height: 50px;
+  border-radius: 8px;
+}
