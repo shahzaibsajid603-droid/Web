@@ -4248,8 +4248,8 @@ function renderSidebar() {
     `
     : `
       <div class="sidebar-logo">
-        <img src="aroosh-logo-light.jpg.jpeg" alt="Aroosh Online Tutors" class="logo-img logo-light">
-        <img src="aroosh-logo-dark.png" alt="Aroosh Online Tutors" class="logo-img logo-dark">
+        <img src="aroosh-banner-light.png" alt="Aroosh Online Tutors" class="logo-img logo-light logo-banner">
+        <img src="aroosh-logo-dark.png" alt="Aroosh Online Tutors" class="logo-img logo-dark logo-banner">
       </div>
       <div style="display: flex; align-items: center; gap: 6px;">
         <button onclick="window.toggleDarkMode()" class="btn btn-ghost btn-sm" style="padding: 4px; font-size: 16px; border: none; background: transparent; cursor: pointer;" title="Toggle Dark/Light Mode">${darkIcon}</button>

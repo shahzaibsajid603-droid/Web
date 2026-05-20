@@ -3568,15 +3568,21 @@ body.dark-mode .logo-dark {
   display: block;
 }
 
+.logo-banner {
+  max-width: 100%;
+}
+
 .sidebar-logo .logo-img {
   height: 52px;
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  max-width: 160px;
 }
 
 .mobile-logo .logo-img {
-  height: 48px;
+  height: 44px;
   border-radius: 8px;
+  max-width: 200px;
 }
 
 .footer-logo-img {
