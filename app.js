@@ -45,476 +45,34 @@ class AppData {
 
   initData() {
     if (!localStorage.getItem('appData')) {
-      const mockData = {
+      const initialData = {
         currentUser: null,
         users: [
           {
-            id: 'user1',
-            name: 'Rahul Kumar',
-            email: 'rahul@example.com',
-            role: 'student',
-            gradeLevel: 'High School',
-            interests: ['Math', 'Science'],
-            avatar: '👤'
-          },
-          {
-            id: 'tutor1',
-            name: 'Priya Singh',
-            email: 'priya@example.com',
-            role: 'tutor',
-            bio: 'Experienced math tutor with 5+ years of teaching. Visual and Kinesthetic learner advocate.',
-            experience: '5-10yr',
-            qualifications: 'B.Sc Mathematics, M.Ed',
-            hourlyRate: 25,
-            subjects: ['Math', 'Physics'],
-            avatar: '👨‍🏫',
-            rating: 4.8,
-            totalReviews: 42,
-            isAvailable: true,
-            yearsOfExperience: 7,
-            experienceLevel: 'Expert',
-            availability: []
-          },
-          {
-            id: 'tutor2',
-            name: 'Amit Patel',
-            bio: 'English & Literature specialist, helps with essays and writing. Focuses on auditory feedback.',
-            hourlyRate: 22,
-            experienceLevel: 'Intermediate',
-            yearsOfExperience: 3,
-            rating: 4.6,
-            totalReviews: 28,
-            isAvailable: true,
-            subjects: ['English', 'History'],
-            avatar: '👨‍🏫',
-            email: 'amit@example.com',
-            qualifications: 'B.A English',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'tutor3',
-            name: 'Sophia Chen',
-            bio: 'Science tutor, specialized in Biology and Chemistry. Hands-on learning techniques.',
-            hourlyRate: 28,
-            experienceLevel: 'Expert',
-            yearsOfExperience: 8,
-            rating: 4.9,
-            totalReviews: 56,
-            isAvailable: false,
-            subjects: ['Science', 'Chemistry', 'Biology'],
-            avatar: '👩‍🏫',
-            email: 'sophia@example.com',
-            qualifications: 'B.Sc Biology, B.Ed',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'tutor4',
-            name: 'Mohammed Al-Rashid',
-            bio: 'Languages specialist - Arabic, Spanish, French.',
-            hourlyRate: 20,
-            experienceLevel: 'Intermediate',
-            yearsOfExperience: 4,
-            rating: 4.7,
-            totalReviews: 35,
-            isAvailable: true,
-            subjects: ['Languages', 'Arabic', 'Spanish'],
-            avatar: '👨‍🏫',
-            email: 'mohammed@example.com',
-            qualifications: 'B.A Linguistics',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'tutor5',
-            name: 'Emma Wilson',
-            bio: 'Technology & coding tutor, specializes in web development and visual diagrams.',
-            hourlyRate: 35,
-            experienceLevel: 'Expert',
-            yearsOfExperience: 9,
-            rating: 4.9,
-            totalReviews: 63,
-            isAvailable: true,
-            subjects: ['Technology', 'Programming'],
-            avatar: '👩‍💻',
-            email: 'emma@example.com',
-            qualifications: 'B.Tech Computer Science',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'tutor6',
-            name: 'David Martinez',
-            bio: 'Arts & design tutor, creative coaching for all skill levels.',
-            hourlyRate: 18,
-            experienceLevel: 'Beginner',
-            yearsOfExperience: 2,
-            rating: 4.5,
-            totalReviews: 18,
-            isAvailable: true,
-            subjects: ['Arts', 'Design'],
-            avatar: '🎨',
-            email: 'david@example.com',
-            qualifications: 'B.A Fine Arts',
-            role: 'tutor',
-            availability: []
-          },
-          {
             id: 'admin1',
             name: 'Admin User',
-            email: 'admin@example.com',
+            email: 'admin@arooshtutors.com',
             role: 'admin',
             avatar: '🛡️'
           }
         ],
-        bookings: [
-          {
-            id: 'booking1',
-            studentId: 'user1',
-            tutorId: 'tutor1',
-            date: new Date().toISOString().split('T')[0],
-            time: '14:00',
-            duration: 60,
-            subject: 'Math',
-            status: 'confirmed',
-            notes: 'Need help with calculus'
-          },
-          {
-            id: 'booking2',
-            studentId: 'user1',
-            tutorId: 'tutor2',
-            date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            time: '15:00',
-            duration: 45,
-            subject: 'English',
-            status: 'pending',
-            notes: 'Essay review'
-          },
-          {
-            id: 'booking3',
-            studentId: 'user1',
-            tutorId: 'tutor3',
-            date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            time: '10:00',
-            duration: 60,
-            subject: 'Chemistry',
-            status: 'completed',
-            notes: 'Periodic table assignment review'
-          },
-          {
-            id: 'booking4',
-            studentId: 'user1',
-            tutorId: 'tutor4',
-            date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            time: '16:00',
-            duration: 30,
-            subject: 'Spanish',
-            status: 'confirmed',
-            notes: 'Conversation practice and grammar review'
-          },
-          {
-            id: 'booking5',
-            studentId: 'user1',
-            tutorId: 'tutor1',
-            date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            time: '11:00',
-            duration: 60,
-            subject: 'Math',
-            status: 'cancelled',
-            notes: 'Was rescheduled due to conflict'
-          }
-        ],
-        reviews: [
-          {
-            id: 'review1',
-            bookingId: 'booking3',
-            tutorId: 'tutor3',
-            studentId: 'user1',
-            rating: 5,
-            comment: 'Excellent tutor! Very knowledgeable and patient.',
-            date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          },
-          {
-            id: 'review2',
-            bookingId: 'booking1',
-            tutorId: 'tutor1',
-            studentId: 'user1',
-            rating: 5,
-            comment: 'Great session! Helped me understand complex formulas.',
-            date: new Date().toISOString().split('T')[0]
-          }
-        ],
-        assignments: [
-          {
-            id: 'assign1',
-            studentId: 'user1',
-            tutorId: 'tutor1',
-            title: 'Calculus Practice Set',
-            description: 'Solve the 20 problems in Section 3.2 of the textbook',
-            dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'pending',
-            grade: null,
-            feedback: null
-          },
-          {
-            id: 'assign2',
-            studentId: 'user1',
-            tutorId: 'tutor2',
-            title: 'Essay on Literature',
-            description: 'Write a 500-word essay on your favorite book',
-            dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'submitted',
-            grade: null,
-            feedback: null,
-            submittedDate: new Date().toISOString().split('T')[0]
-          },
-          {
-            id: 'assign3',
-            studentId: 'user1',
-            tutorId: 'tutor3',
-            title: 'Chemistry Lab Report',
-            description: 'Complete lab experiment and write a detailed report',
-            dueDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'graded',
-            grade: 88,
-            feedback: 'Good work! Your methodology was sound. Next time, include more analysis.',
-            submittedDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          }
-        ],
-        messages: [
-          {
-            id: 'msg1',
-            senderId: 'user1',
-            recipientId: 'tutor1',
-            content: 'Hi, when can we schedule our next session?',
-            timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-            read: true
-          },
-          {
-            id: 'msg2',
-            senderId: 'tutor1',
-            recipientId: 'user1',
-            content: 'How about next Tuesday at 2 PM?',
-            timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            read: true
-          },
-          {
-            id: 'msg3',
-            senderId: 'user1',
-            recipientId: 'tutor2',
-            content: 'Thank you for the essay feedback!',
-            timestamp: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
-            read: true
-          },
-          {
-            id: 'msg4',
-            senderId: 'tutor2',
-            recipientId: 'user1',
-            content: 'You\'re welcome! Keep up the good work.',
-            timestamp: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-            read: false
-          }
-        ],
-        tutorApplications: [
-          {
-            id: 'app1',
-            name: 'Neha Verma',
-            email: 'neha@example.com',
-            bio: 'Physics teacher with 2 years experience',
-            experience: '1-3yr',
-            qualifications: 'B.Sc Physics, B.Ed',
-            subjects: ['Physics'],
-            hourlyRate: 20,
-            status: 'pending',
-            appliedDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          },
-          {
-            id: 'app2',
-            name: 'James Thompson',
-            email: 'james@example.com',
-            bio: 'University student tutoring high school subjects',
-            experience: '<1yr',
-            qualifications: 'B.A In Progress',
-            subjects: ['Math', 'English'],
-            hourlyRate: 15,
-            status: 'pending',
-            appliedDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          },
-          {
-            id: 'app3',
-            name: 'Dr. Lisa Chang',
-            email: 'lisa@example.com',
-            bio: 'PhD in Chemistry, published researcher',
-            experience: '10+yr',
-            qualifications: 'Ph.D Chemistry',
-            subjects: ['Chemistry', 'Science'],
-            hourlyRate: 45,
-            status: 'approved',
-            appliedDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          }
-        ],
+        bookings: [],
+        reviews: [],
+        assignments: [],
+        messages: [],
+        tutorApplications: [],
         leaderboard: {
-          students: [
-            { rank: 1, name: 'Aisha Khan', points: 2450, streak: 15 },
-            { rank: 2, name: 'Rahul Kumar', points: 2320, streak: 12 },
-            { rank: 3, name: 'Zara Ali', points: 2150, streak: 10 },
-            { rank: 4, name: 'Vikram Singh', points: 1980, streak: 8 },
-            { rank: 5, name: 'Priya Patel', points: 1850, streak: 7 },
-            { rank: 6, name: 'Mohammed Habib', points: 1720, streak: 6 },
-            { rank: 7, name: 'Chen Wei', points: 1530, streak: 4 }
-          ],
-          tutors: [
-            { rank: 1, name: 'Priya Singh', points: 3200, streak: 20 },
-            { rank: 2, name: 'Emma Wilson', points: 3050, streak: 18 },
-            { rank: 3, name: 'Sophia Chen', points: 2920, streak: 16 },
-            { rank: 4, name: 'Amit Patel', points: 2450, streak: 12 },
-            { rank: 5, name: 'David Martinez', points: 2100, streak: 10 },
-            { rank: 6, name: 'Mohammed Al-Rashid', points: 1950, streak: 8 }
-          ]
+          students: [],
+          tutors: []
         },
-        disputes: [
-          {
-            id: 'disp1',
-            caseNumber: 'CASE-001',
-            status: 'open',
-            filedDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            claimedAmount: 25,
-            studentName: 'Rahul Kumar',
-            tutorName: 'Priya Singh',
-            reason: 'Session quality',
-            description: 'Session was cut short, did not receive full service',
-            evidence: ['screenshot1.png'],
-            resolution: null
-          },
-          {
-            id: 'disp2',
-            caseNumber: 'CASE-002',
-            status: 'in_review',
-            filedDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            claimedAmount: 22,
-            studentName: 'Zara Ali',
-            tutorName: 'Amit Patel',
-            reason: 'No show',
-            description: 'Tutor did not appear for scheduled session',
-            evidence: ['email_confirmation.pdf'],
-            resolution: null
-          },
-          {
-            id: 'disp3',
-            caseNumber: 'CASE-003',
-            status: 'resolved',
-            filedDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            claimedAmount: 18,
-            studentName: 'Vikram Singh',
-            tutorName: 'David Martinez',
-            reason: 'Technical issues',
-            description: 'Connection problems during session',
-            evidence: [],
-            resolution: 'Refund approved - full session amount refunded'
-          }
-        ],
-        refunds: [
-          {
-            id: 'ref1',
-            studentName: 'Vikram Singh',
-            amount: 18,
-            reason: 'Technical issues',
-            sessionDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'approved'
-          },
-          {
-            id: 'ref2',
-            studentName: 'Priya Patel',
-            amount: 25,
-            reason: 'Session cancelled by tutor',
-            sessionDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'pending'
-          },
-          {
-            id: 'ref3',
-            studentName: 'Mohammed Habib',
-            amount: 22,
-            reason: 'Unsatisfactory service',
-            sessionDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'rejected'
-          }
-        ],
-        announcements: [
-          {
-            id: 'ann1',
-            title: 'Welcome to Aroosh Tutors!',
-            content: 'We are excited to launch our new tutoring platform. Connect with expert tutors and achieve your learning goals.',
-            type: 'announcement',
-            priority: 'high',
-            createdAt: new Date().toISOString(),
-            createdBy: 'admin1',
-            isActive: true
-          },
-          {
-            id: 'ann2',
-            title: 'New Math Tutor Available',
-            content: 'Dr. Lisa Chen has joined our platform with expertise in advanced mathematics and calculus.',
-            type: 'announcement',
-            priority: 'medium',
-            createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            createdBy: 'admin1',
-            isActive: true
-          }
-        ],
-        posts: [
-          {
-            id: 'post1',
-            title: 'Tips for Effective Online Learning',
-            content: 'Discover the best strategies for maximizing your online tutoring sessions. Create a dedicated study space, minimize distractions, and come prepared with questions.',
-            type: 'post',
-            category: 'Study Tips',
-            mediaType: null,
-            mediaUrl: null,
-            createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            createdBy: 'admin1',
-            isActive: true
-          },
-          {
-            id: 'post2',
-            title: 'Summer Learning Programs',
-            content: 'Enroll in our special summer courses to get ahead before the next academic year. Special discounts available for early registrations!',
-            type: 'post',
-            category: 'News',
-            mediaType: null,
-            mediaUrl: null,
-            createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            createdBy: 'admin1',
-            isActive: true
-          }
-        ],
-        feedback: [
-          {
-            id: 'fb1',
-            userId: 'user1',
-            userName: 'Rahul Kumar',
-            type: 'general',
-            subject: 'Platform Suggestion',
-            message: 'It would be great to have a video call feature directly in the platform.',
-            status: 'pending',
-            createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            response: null
-          },
-          {
-            id: 'fb2',
-            userId: 'user1',
-            userName: 'Rahul Kumar',
-            type: 'bug',
-            subject: 'Login Issue',
-            message: 'Sometimes the login page takes too long to load.',
-            status: 'resolved',
-            createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            response: 'Thank you for reporting. We have optimized the login page loading time.'
-          }
-        ]
+        disputes: [],
+        refunds: [],
+        announcements: [],
+        posts: [],
+        feedback: []
       };
       this._cache = null;
-      localStorage.setItem('appData', JSON.stringify(mockData));
+      localStorage.setItem('appData', JSON.stringify(initialData));
     }
   }
 
@@ -2372,26 +1930,10 @@ function renderTutorDashboard() {
     const bookings = appData.getBookings();
     const tutorBookings = bookings.filter(b => b.tutorId === (user?.id || 'tutor1'));
     
-    const tutorUser = appData.getTutorById(user?.id || 'tutor1');
-    const rate = tutorUser ? tutorUser.hourlyRate : 25;
-    
     const pending = tutorBookings.filter(b => b.status === 'pending');
     const active = tutorBookings.filter(b => b.status === 'confirmed');
     const completed = tutorBookings.filter(b => b.status === 'completed');
-    
-    // Earnings summary card: complete bookings * rate
-    const totalEarnings = completed.reduce((sum, b) => sum + (b.duration / 60) * rate, 0);
 
-    const earningsCardHtml = `
-      <div class="card" style="margin-bottom: 2rem; background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); color: white; border: none; padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
-        <div>
-          <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; display: block; margin-bottom: 0.25rem;">Total Earnings</span>
-          <h3 style="color: white; margin: 0 0 0.5rem 0; font-size: 2.25rem; font-weight: 800;">$${totalEarnings.toFixed(2)}</h3>
-          <p style="margin: 0; font-size: 0.9rem; opacity: 0.9;">Calculated from ${completed.length} completed tutoring sessions at $${rate}/hr</p>
-        </div>
-        <div style="font-size: 3.5rem; opacity: 0.9;">💰</div>
-      </div>
-    `;
 
     // Priority Sort Bookings (Pending -> Confirmed -> Completed)
     const priorityBookings = [...pending, ...active, ...completed, ...tutorBookings.filter(b => b.status === 'cancelled')];
@@ -2399,8 +1941,6 @@ function renderTutorDashboard() {
     const actualHtml = `
       <div class="container" style="padding: 2rem 0;">
         <h1 class="mb-lg">Tutor Dashboard</h1>
-
-        ${earningsCardHtml}
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
           <div class="card" style="padding: 1.25rem; text-align: center; border-left: 4px solid var(--color-primary);">
@@ -2453,7 +1993,7 @@ function renderTutorDashboard() {
                       <span style="margin-right: 1rem;">📅 ${sanitize(booking.date)}</span>
                       <span style="margin-right: 1rem;">⏰ ${sanitize(booking.time)}</span>
                       <span style="margin-right: 1rem;">⏱️ ${sanitize(booking.duration)} mins</span>
-                      <span>Rate: $${rate}/hr</span>
+
                     </div>
                   </div>
                   <div class="session-actions" style="display: flex; align-items: center; gap: 1rem;">
@@ -2490,22 +2030,24 @@ window.respondRequest = (bookingId, action) => {
 // PAGE 9: MESSAGES/CHAT
 function renderChat() {
   const messages = appData.getMessages();
-  const contacts = [
-    { id: 'tutor1', name: 'Priya Singh', role: 'Tutor', avatar: '👨‍🏫' },
-    { id: 'tutor2', name: 'Amit Patel', role: 'Tutor', avatar: '👨‍🏫' },
-    { id: 'tutor3', name: 'Sophia Chen', role: 'Tutor', avatar: '👩‍🏫' }
-  ];
+  const users = appData.getUsers();
+  const tutors = users.filter(u => u.role === 'tutor');
 
   const html = `
     <div class="chat-container">
       <div class="chat-sidebar">
         <ul class="chat-list" id="chatList">
-          ${contacts.map(contact => `
-            <li class="chat-item ${contact.id === 'tutor1' ? 'active' : ''}" onclick="selectChat('${contact.id}', this)">
-              <div class="chat-item-name">${sanitize(contact.name)}</div>
-              <div class="chat-item-message">${sanitize(contact.role)}</div>
+          ${tutors.length > 0 ? tutors.map((tutor, i) => `
+            <li class="chat-item ${i === 0 ? 'active' : ''}" onclick="selectChat('${tutor.id}', this)">
+              <div class="chat-item-name">${sanitize(tutor.name)}</div>
+              <div class="chat-item-message">Tutor</div>
             </li>
-          `).join('')}
+          `).join('') : `
+            <li class="chat-item" style="opacity: 0.6; cursor: default;">
+              <div class="chat-item-name">No contacts yet</div>
+              <div class="chat-item-message">Tutors will appear here</div>
+            </li>
+          `}
         </ul>
       </div>
 
@@ -4788,10 +4330,10 @@ window.switchRole = (role) => {
     appData.setCurrentUser(null);
     router.navigate('/');
   } else if (role === 'student') {
-    appData.setCurrentUser({ name: 'Rahul Kumar', role: 'student', id: 'user1', avatar: '👤' });
+    appData.setCurrentUser({ name: 'Student', role: 'student', id: 'user1', avatar: '👤' });
     router.navigate('/student-dashboard');
   } else if (role === 'tutor') {
-    appData.setCurrentUser({ name: 'Priya Singh', role: 'tutor', id: 'tutor1', avatar: '👨‍🏫' });
+    appData.setCurrentUser({ name: 'Tutor', role: 'tutor', id: 'tutor1', avatar: '👨‍🏫' });
     router.navigate('/tutor-dashboard');
   } else if (role === 'admin') {
     appData.setCurrentUser({ name: 'Admin User', role: 'admin', id: 'admin1', avatar: '🛡️' });
