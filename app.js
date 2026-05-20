@@ -4354,4 +4354,13 @@ window.logout = () => {
 document.addEventListener('DOMContentLoaded', () => {
   renderSidebar();
   router.start();
+
+  // Dismiss loading screen after content is ready
+  const loadingScreen = document.getElementById('loading-screen');
+  if (loadingScreen) {
+    setTimeout(() => {
+      loadingScreen.classList.add('fade-out');
+      setTimeout(() => loadingScreen.remove(), 600);
+    }, 2000);
+  }
 });
