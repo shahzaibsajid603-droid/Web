@@ -3,12 +3,42 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://xqcrkklhhwsuhnqphtxg.supabase.co; img-src 'self' data: blob:; base-uri 'self'; form-action 'self';">
   <title>Aroosh Online Tutors - Expert Tutoring Platform</title>
   <meta name="description" content="Connect with expert tutors online. Flexible scheduling, personalized learning, and real results.">
   <meta name="theme-color" content="#A79277">
   <link rel="stylesheet" href="styles.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+  <script>
+    // Guaranteed loading screen failsafe - always hides within 2s no matter what
+    setTimeout(function() {
+      var ls = document.getElementById('loading-screen');
+      if (ls) {
+        ls.classList.add('fade-out');
+        setTimeout(function() { if (ls.parentNode) ls.remove(); }, 600);
+      }
+    }, 2000);
+  </script>
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="loading-screen">
+    <div class="loading-content">
+      <div class="loading-logo-wrapper">
+        <div class="loading-logo-glow"></div>
+        <img src="aroosh-logo-light.jpg.jpeg" alt="Aroosh Online Tutors" class="loading-logo">
+      </div>
+      <div class="loading-text">
+        <span class="loading-title">Aroosh Online Tutors</span>
+        <span class="loading-subtitle">Expert Tutoring for Every Subject</span>
+      </div>
+      <div class="loading-bar-track">
+        <div class="loading-bar-fill"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Sidebar Container -->
   <aside id="sidebar" class="sidebar">
     <!-- Sidebar will be injected here -->
@@ -24,14 +54,12 @@
         <span></span>
       </button>
       <div class="mobile-logo">
-        <span class="navbar-logo-main">Aroosh</span>
-        <span class="navbar-logo-sub">Tutors</span>
+        <img src="aroosh-logo-light.jpg.jpeg" alt="Aroosh Online Tutors" class="logo-img logo-light">
+        <img src="aroosh-logo-dark.png" alt="Aroosh Online Tutors" class="logo-img logo-dark">
       </div>
     </header>
 
-    <main id="app" class="container">
-      <!-- Pages will be rendered here -->
-    </main>
+    <main id="app" class="container"></main>
   </div>
 
   <!-- Sidebar Overlay Backdrop for mobile -->
@@ -112,6 +140,68 @@
         <button id="whatsapp-send-btn" class="whatsapp-send-btn" aria-label="Send via WhatsApp">
           Send via WhatsApp
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Assistant Floating Chatbot -->
+  <div id="ai-assistant-component">
+    <!-- Floating Button -->
+    <button id="ai-assistant-button" class="ai-assistant-floating-btn" aria-label="Open AI Assistant">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="white">
+        <path d="M12 2C6.48 2 2 6.48 2 12c0 1.82.38 3.55 1.06 5.11L2 22l4.89-1.06A9.94 9.94 0 0012 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.66 0-3.2-.51-4.47-1.38l-.34-.23-3.28.71.71-3.28-.23-.34A7.94 7.94 0 014 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8zm-1-13v2h2V7h-2zm0 4v6h2v-6h-2z"/>
+      </svg>
+    </button>
+
+    <!-- Chat Window -->
+    <div id="ai-assistant-chat" class="ai-assistant-chat">
+      <!-- Chat Header -->
+      <div class="ai-assistant-header">
+        <div class="ai-assistant-title">
+          <span class="ai-assistant-icon">🤖</span>
+          <span>Aroosh Assistant</span>
+        </div>
+        <button id="ai-assistant-close" class="ai-assistant-close-btn" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Chat Messages -->
+      <div id="ai-assistant-messages" class="ai-assistant-messages">
+        <div class="ai-message ai-message-bot">
+          <div class="ai-message-avatar">🤖</div>
+          <div class="ai-message-content">
+            <p>Hi! I'm your Aroosh Assistant. I can help you with:</p>
+            <ul>
+              <li>Finding tutors</li>
+              <li>Booking sessions</li>
+              <li>Setting up your profile</li>
+              <li>Platform policies</li>
+            </ul>
+            <p>What would you like help with?</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Input -->
+      <div class="ai-assistant-input-area">
+        <form id="ai-assistant-form" class="ai-assistant-form">
+          <input 
+            type="text" 
+            id="ai-assistant-input" 
+            class="ai-assistant-input" 
+            placeholder="Type your question..." 
+            autocomplete="off"
+            aria-label="Your question"
+          />
+          <button type="submit" id="ai-assistant-send" class="ai-assistant-send-btn" aria-label="Send">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
+        </form>
       </div>
     </div>
   </div>
