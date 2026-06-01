@@ -3,12 +3,54 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com; font-src 'self' https://fonts.gstatic.com https://cdn.fontshare.com; connect-src 'self' https://xqcrkklhhwsuhnqphtxg.supabase.co https://api.cloudinary.com; img-src 'self' data: blob: https://res.cloudinary.com; media-src 'self' blob: https://res.cloudinary.com; base-uri 'self'; form-action 'self';">
   <title>Aroosh Online Tutors - Expert Tutoring Platform</title>
   <meta name="description" content="Connect with expert tutors online. Flexible scheduling, personalized learning, and real results.">
   <meta name="theme-color" content="#A79277">
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="aroosh-logo-light.png">
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Aroosh Online Tutors - Expert Tutoring Platform">
+  <meta property="og:description" content="Connect with expert tutors online. Flexible scheduling, personalized learning, and real results.">
+  <meta property="og:image" content="aroosh-logo-light.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Aroosh Online Tutors - Expert Tutoring Platform">
+  <meta name="twitter:description" content="Connect with expert tutors online. Flexible scheduling, personalized learning, and real results.">
+  <meta name="twitter:image" content="aroosh-logo-light.png">
   <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
 </head>
 <body>
+  <script>
+    // Guaranteed loading screen failsafe - always hides within 2s no matter what
+    setTimeout(function() {
+      var ls = document.getElementById('loading-screen');
+      if (ls) {
+        ls.classList.add('fade-out');
+        setTimeout(function() { if (ls.parentNode) ls.remove(); }, 600);
+      }
+    }, 4000);
+  </script>
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="loading-screen">
+    <div class="loading-content">
+      <div class="loading-logo-wrapper">
+        <div class="loading-logo-glow"></div>
+        <img src="aroosh-logo-light.png" alt="Aroosh Online Tutors" class="loading-logo">
+      </div>
+      <div class="loading-text">
+        <span class="loading-title">Aroosh Online Tutors</span>
+        <span class="loading-subtitle">Expert Tutoring for Every Subject</span>
+      </div>
+      <div class="loading-bar-track">
+        <div class="loading-bar-fill"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Sidebar Container -->
   <aside id="sidebar" class="sidebar">
     <!-- Sidebar will be injected here -->
@@ -24,14 +66,12 @@
         <span></span>
       </button>
       <div class="mobile-logo">
-        <span class="navbar-logo-main">Aroosh</span>
-        <span class="navbar-logo-sub">Tutors</span>
+        <img src="aroosh-logo-light.png" alt="Aroosh Online Tutors" class="logo-img logo-light">
+        <img src="aroosh-logo-dark.png" alt="Aroosh Online Tutors" class="logo-img logo-dark">
       </div>
     </header>
 
-    <main id="app" class="container">
-      <!-- Pages will be rendered here -->
-    </main>
+    <main id="app" class="container"></main>
   </div>
 
   <!-- Sidebar Overlay Backdrop for mobile -->

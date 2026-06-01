@@ -1,0 +1,10 @@
+{
+  "name": "aroosh-online-tutors",
+  "version": "2.0.0",
+  "description": "Aroosh Online Tutors - Expert tutoring platform",
+  "private": true,
+  "scripts": {
+    "start": "npx serve .",
+    "lint": "echo 'No linter configured for static HTML/JS project'"
+  }
+}
