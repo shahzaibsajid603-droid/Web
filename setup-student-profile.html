@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://xqcrkklhhwsuhnqphtxg.supabase.co https://api.cloudinary.com; img-src 'self' data: blob: https://res.cloudinary.com; base-uri 'self'; form-action 'self';"/>
 <title>Complete Your Profile – Aroosh Online Tutors</title>
+<link rel="icon" type="image/png" href="aroosh-logo-light.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -164,10 +165,11 @@ input[type="file"].form-input{padding:8px 12px}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
 <script>
 (function () {
-  const SUPABASE_URL = 'https://xqcrkklhhwsuhnqphtxg.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_h_xLHP7xPecIqhASfg26-Q_lDPFfvKy';
+  const SUPABASE_URL = APP_CONFIG.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = APP_CONFIG.SUPABASE_ANON_KEY;
   let client = null;
   let userId = null;
   let userEmail = null;
@@ -175,12 +177,12 @@ input[type="file"].form-input{padding:8px 12px}
   function initSupabase() {
     const sdk = window.supabase;
     if (sdk && sdk.createClient) {
-      try { client = sdk.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) { console.error(e); }
+      try { client = sdk.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) {  }
     } else {
       window.addEventListener('load', function () {
         const sdk2 = window.supabase;
         if (sdk2 && sdk2.createClient) {
-          try { client = sdk2.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) { console.error(e); }
+          try { client = sdk2.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) {  }
         }
         requireAuth();
       });
@@ -273,7 +275,6 @@ input[type="file"].form-input{padding:8px 12px}
         const data = await res.json();
         avatar = data.secure_url || null;
       } catch(e) {
-        console.error('Avatar upload failed:', e);
         avatar = null;
       }
       btn.textContent = 'Saving...';
@@ -292,22 +293,18 @@ input[type="file"].form-input{padding:8px 12px}
       };
       if (avatar) updates.avatar = avatar;
 
-      console.log('[Profile Setup] Saving profile for user:', currentUserId, updates);
       const { error, data } = await client.from('profiles').upsert(updates, { onConflict: 'id' });
       if (error) {
-        console.error('[Profile Setup] Supabase error code:', error.code, 'details:', error.details, 'hint:', error.hint, 'message:', error.message);
         showError('goals-error', 'Failed to save profile: ' + (error.message || 'Unknown error'));
         btn.classList.remove('loading'); btn.disabled = false;
         return;
       }
-      console.log('[Profile Setup] Success:', data);
 
       const el = document.getElementById('success-msg');
       el.textContent = 'Profile saved! Redirecting to dashboard...';
       el.classList.add('show');
       setTimeout(function () { window.location.href = 'index.html#/student-dashboard'; }, 1200);
     } catch (err) {
-      console.error('[Profile Setup] Exception:', err);
       showError('goals-error', 'An error occurred: ' + err.message);
       btn.classList.remove('loading'); btn.disabled = false;
     }

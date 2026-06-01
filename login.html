@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://xqcrkklhhwsuhnqphtxg.supabase.co; img-src 'self' data: blob:; base-uri 'self'; form-action 'self';"/>
 <title>Aroosh Online Tutors – Authentication</title>
+<link rel="icon" type="image/png" href="aroosh-logo-light.png">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -430,13 +431,23 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
 <script>
 (function () {
-  const SUPABASE_URL = 'https://xqcrkklhhwsuhnqphtxg.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_h_xLHP7xPecIqhASfg26-Q_lDPFfvKy';
+  const SUPABASE_URL = APP_CONFIG.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = APP_CONFIG.SUPABASE_ANON_KEY;
 
   let client = null;
   let selectedRole = 'student';
+
+  // Rate limiting: max 5 attempts per 60 seconds
+  const rateLimiter = { attempts: 0, resetTime: 0, maxAttempts: 5, windowMs: 60000 };
+  function checkRateLimit() {
+    const now = Date.now();
+    if (now > rateLimiter.resetTime) { rateLimiter.attempts = 0; rateLimiter.resetTime = now + rateLimiter.windowMs; }
+    rateLimiter.attempts++;
+    return rateLimiter.attempts <= rateLimiter.maxAttempts;
+  }
 
   function initSupabase() {
     const sdk = window.supabase;
@@ -445,10 +456,8 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
         client = sdk.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         checkAuth();
       } catch (err) {
-        console.error('Failed to create Supabase client:', err);
       }
     } else {
-      console.warn('Supabase SDK not ready, waiting for load...');
       window.addEventListener('load', function () {
         const sdk2 = window.supabase;
         if (sdk2 && sdk2.createClient) {
@@ -456,10 +465,8 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
             client = sdk2.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             checkAuth();
           } catch (err) {
-            console.error('Failed to create Supabase client on load:', err);
           }
         } else {
-          console.error('Supabase SDK could not be loaded.');
         }
       });
     }
@@ -512,13 +519,13 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
       const { data: { session } } = await client.auth.getSession();
       if (session) window.location.href = 'index.html';
     } catch (err) {
-      console.error('Auth check error:', err);
     }
   }
 
   async function handleSignIn(event) {
     event.preventDefault();
     clearErrors();
+    if (!checkRateLimit()) { showError('signin-email-error', 'Too many attempts. Please wait 60 seconds.'); return; }
     if (!client) { showError('signin-email-error', 'System not ready. Please refresh.'); return; }
 
     const email = document.getElementById('signin-email').value.trim();
@@ -540,7 +547,6 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
       }
     } catch (err) {
       showError('signin-email-error', 'An error occurred. Please try again.');
-      console.error(err);
     } finally {
       btn.classList.remove('loading'); btn.disabled = false;
     }
@@ -549,6 +555,7 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
   async function handleSignUp(event) {
     event.preventDefault();
     clearErrors();
+    if (!checkRateLimit()) { showError('signup-email-error', 'Too many attempts. Please wait 60 seconds.'); return; }
     if (!client) { showError('signup-email-error', 'System not ready. Please refresh.'); return; }
 
     const name = document.getElementById('signup-name').value.trim();
@@ -591,7 +598,6 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
       }
     } catch (err) {
       showError('signup-email-error', 'An error occurred: ' + err.message);
-      console.error(err);
     } finally {
       btn.classList.remove('loading'); btn.disabled = false;
     }
@@ -617,7 +623,6 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
       }
     } catch (err) {
       showError('signin-email-error', 'An error occurred. Please try again.');
-      console.error(err);
     }
   }
 

@@ -1,13 +1,10 @@
 // ============================================================================
 // AROOSH ONLINE TUTORS - COMPLETE APPLICATION
 // ============================================================================
+// Configuration is loaded from config.js (must be included before this file).
 
-// Supabase Configuration
-// SECURITY: ONLY the anon (public) key is used here. NEVER expose the
-// service_role key on the frontend — it bypasses all RLS policies.
-// All data access is gated by Row Level Security (RLS) enforced server-side.
-const SUPABASE_URL = 'https://xqcrkklhhwsuhnqphtxg.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_h_xLHP7xPecIqhASfg26-Q_lDPFfvKy';
+const SUPABASE_URL = APP_CONFIG.SUPABASE_URL;
+const SUPABASE_ANON_KEY = APP_CONFIG.SUPABASE_ANON_KEY;
 
 // Initialize Supabase client robustly
 let supabaseClient;
@@ -15,16 +12,13 @@ function initSupabaseClient() {
   if (window.supabase && window.supabase.createClient) {
     try {
       supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      console.log('[App] Supabase client initialized');
       return true;
     } catch (err) {
-      console.error('Failed to create Supabase client in app.js:', err);
     }
   }
   return false;
 }
 if (!initSupabaseClient()) {
-  console.warn('[App] Supabase SDK not ready, waiting...');
   window.addEventListener('load', () => {
     if (!supabaseClient) initSupabaseClient();
   });
@@ -72,11 +66,22 @@ function normalizeRole(role) {
   return String(role).toLowerCase();
 }
 
-const ADMIN_EMAIL = 'arooshonlinetutors@gmail.com';
+const ADMIN_EMAIL = APP_CONFIG.ADMIN_EMAIL;
 
 function isAdmin(user) {
   if (!user) return false;
   return user.email === ADMIN_EMAIL || normalizeRole(user.role) === 'admin';
+}
+
+// Server-side admin verification via Supabase RLS
+async function verifyAdminRole() {
+  if (!supabaseClient) return false;
+  try {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) return false;
+    const { data } = await supabaseClient.from('profiles').select('role').eq('id', user.id).single();
+    return data && data.role === 'admin';
+  } catch (e) { return false; }
 }
 
 
@@ -138,16 +143,13 @@ class SupabaseDataLayer {
   async initAuth() {
     try {
       if (!supabaseClient) {
-        console.error('[Auth] Supabase client not initialized');
         this.currentUser = null;
         return;
       }
       // Check for existing session
       const { data: { session } } = await supabaseClient.auth.getSession();
-      console.log('[Auth] Session check:', session ? 'found' : 'none');
       if (session) {
         await this.loadUserProfile(session.user.id);
-        console.log('[Auth] Profile loaded, currentUser:', this.currentUser);
         this._redirectToDashboardIfOnHome();
       } else {
         this.currentUser = null;
@@ -156,7 +158,6 @@ class SupabaseDataLayer {
 
       // Listen for auth changes
       supabaseClient.auth.onAuthStateChange(async (event, session) => {
-        console.log('[Auth] State change:', event);
         if (session) {
           await this.loadUserProfile(session.user.id);
           if (typeof renderSidebar === 'function') renderSidebar();
@@ -169,7 +170,6 @@ class SupabaseDataLayer {
         }
       });
     } catch (err) {
-      console.error('[Auth] initAuth error:', err);
       this.currentUser = null;
     } finally {
       if (this._resolveAuth) { this._resolveAuth(); this._resolveAuth = null; }
@@ -200,7 +200,6 @@ class SupabaseDataLayer {
           isFallback: true
         };
       } catch (fallbackError) {
-        console.warn('Could not build fallback profile from auth user:', fallbackError);
         return {
           id: userId,
           email: '',
@@ -220,16 +219,13 @@ class SupabaseDataLayer {
         .maybeSingle();
 
       if (error) {
-        console.warn('Profile fetch failed, continuing with fallback profile:', error);
         this.currentUser = await buildFallbackProfile();
         return;
       }
 
       if (!data) {
-        console.warn('Profile not found. Executing self-healing profile creation...');
         const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
         if (userError) {
-          console.warn('Could not read auth user, continuing with fallback profile:', userError);
           this.currentUser = await buildFallbackProfile();
           return;
         }
@@ -251,18 +247,15 @@ class SupabaseDataLayer {
           .single();
 
         if (insertError) {
-          console.error('Self-healing profile insert failed (RLS or other):', insertError);
           data = await buildFallbackProfile();
         } else {
           data = newProfile;
-          console.log('Self-healing profile creation succeeded:', data);
         }
       }
 
       if (data) data.role = normalizeRole(data.role);
       this.currentUser = data || await buildFallbackProfile();
     } catch (error) {
-      console.warn('Profile loading failed, continuing with fallback profile:', error);
       this.currentUser = await buildFallbackProfile();
     }
   }
@@ -357,7 +350,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       if (data && data.length > 0) return data;
     } catch (error) {
-      console.error('Error fetching tutors:', error);
     }
     // Fallback to localStorage if Supabase fails or is empty
     const localData = this.getData();
@@ -376,7 +368,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       if (data) return data;
     } catch (error) {
-      console.error('Error fetching tutor:', error);
     }
     // Fallback to localStorage
     const localData = this.getData();
@@ -396,7 +387,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return Array.isArray(data) ? data : [];
     } catch (error) {
-      console.error('Error fetching bookings:', error);
       return [];
     }
   }
@@ -415,7 +405,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error adding booking:', error);
       return null;
     }
   }
@@ -432,7 +421,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error updating booking:', error);
       return null;
     }
   }
@@ -451,7 +439,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching assignments:', error);
       return [];
     }
   }
@@ -470,7 +457,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error adding assignment:', error);
       return null;
     }
   }
@@ -489,7 +475,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching reviews:', error);
       return [];
     }
   }
@@ -508,7 +493,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error adding message:', error);
       return null;
     }
   }
@@ -528,7 +512,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching messages:', error);
       return [];
     }
   }
@@ -548,7 +531,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching announcements:', error);
       return [];
     }
   }
@@ -567,7 +549,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error adding announcement:', error);
       return null;
     }
   }
@@ -586,7 +567,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching posts:', error);
       return [];
     }
   }
@@ -605,7 +585,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error adding post:', error);
       return null;
     }
   }
@@ -624,7 +603,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching feedback:', error);
       return [];
     }
   }
@@ -643,7 +621,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error adding feedback:', error);
       return null;
     }
   }
@@ -659,7 +636,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching tutor applications:', error);
       return [];
     }
   }
@@ -675,7 +651,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error adding tutor application:', error);
       return null;
     }
   }
@@ -696,7 +671,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching users:', error);
       return [];
     }
   }
@@ -711,7 +685,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error fetching students:', error);
       return [];
     }
   }
@@ -728,7 +701,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error updating user:', error);
       return null;
     }
   }
@@ -754,7 +726,6 @@ class SupabaseDataLayer {
 
       return { success: true, application: app };
     } catch (error) {
-      console.error('Error approving tutor application:', error);
       return { success: false, error: error.message };
     }
   }
@@ -771,7 +742,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error rejecting tutor application:', error);
       return null;
     }
   }
@@ -791,7 +761,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error adding experience:', error);
       return null;
     }
   }
@@ -808,7 +777,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error approving experience:', error);
       return null;
     }
   }
@@ -823,7 +791,6 @@ class SupabaseDataLayer {
       if (error) throw error;
       return { success: true };
     } catch (error) {
-      console.error('Error deleting experience:', error);
       return { success: false, error: error.message };
     }
   }
@@ -839,7 +806,7 @@ class SupabaseDataLayer {
       const { error } = await supabaseClient.from('announcements').delete().eq('id', id);
       if (error) throw error;
       return { success: true };
-    } catch (e) { console.error('deleteAnnouncement:', e); return { success: false }; }
+    } catch (e) {  return { success: false }; }
   }
 
   async updateAnnouncement(id, updates) {
@@ -848,7 +815,7 @@ class SupabaseDataLayer {
         .update(sanitizeObjectStrings(updates)).eq('id', id).select().single();
       if (error) throw error;
       return data;
-    } catch (e) { console.error('updateAnnouncement:', e); return null; }
+    } catch (e) {  return null; }
   }
 
   async deletePost(id) {
@@ -856,7 +823,7 @@ class SupabaseDataLayer {
       const { error } = await supabaseClient.from('posts').delete().eq('id', id);
       if (error) throw error;
       return { success: true };
-    } catch (e) { console.error('deletePost:', e); return { success: false }; }
+    } catch (e) {  return { success: false }; }
   }
 
   async updatePost(id, updates) {
@@ -865,7 +832,7 @@ class SupabaseDataLayer {
         .update(sanitizeObjectStrings(updates)).eq('id', id).select().single();
       if (error) throw error;
       return data;
-    } catch (e) { console.error('updatePost:', e); return null; }
+    } catch (e) {  return null; }
   }
 
   async deleteBooking(id) {
@@ -873,7 +840,7 @@ class SupabaseDataLayer {
       const { error } = await supabaseClient.from('bookings').delete().eq('id', id);
       if (error) throw error;
       return { success: true };
-    } catch (e) { console.error('deleteBooking:', e); return { success: false }; }
+    } catch (e) {  return { success: false }; }
   }
 
   async updateBooking(id, updates) {
@@ -882,7 +849,7 @@ class SupabaseDataLayer {
         .update(sanitizeObjectStrings(updates)).eq('id', id).select().single();
       if (error) throw error;
       return data;
-    } catch (e) { console.error('updateBooking:', e); return null; }
+    } catch (e) {  return null; }
   }
 
   async deleteUser(id) {
@@ -890,7 +857,7 @@ class SupabaseDataLayer {
       const { error } = await supabaseClient.from('profiles').delete().eq('id', id);
       if (error) throw error;
       return { success: true };
-    } catch (e) { console.error('deleteUser:', e); return { success: false }; }
+    } catch (e) {  return { success: false }; }
   }
 
   async addUser(user) {
@@ -899,7 +866,7 @@ class SupabaseDataLayer {
         .insert(sanitizeObjectStrings(user)).select().single();
       if (error) throw error;
       return data;
-    } catch (e) { console.error('addUser:', e); return null; }
+    } catch (e) {  return null; }
   }
 
 
@@ -908,7 +875,7 @@ class SupabaseDataLayer {
       const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', id).eq('role', 'student').maybeSingle();
       if (error) throw error;
       return data;
-    } catch (e) { console.error('getStudentById:', e); return null; }
+    } catch (e) {  return null; }
   }
 
   async updateFeedbackStatus(id, status, response = null) {
@@ -919,7 +886,7 @@ class SupabaseDataLayer {
         .update(updates).eq('id', id).select().single();
       if (error) throw error;
       return data;
-    } catch (e) { console.error('updateFeedbackStatus:', e); return null; }
+    } catch (e) {  return null; }
   }
 
   async deleteFeedback(id) {
@@ -927,7 +894,7 @@ class SupabaseDataLayer {
       const { error } = await supabaseClient.from('feedback').delete().eq('id', id);
       if (error) throw error;
       return { success: true };
-    } catch (e) { console.error('deleteFeedback:', e); return { success: false }; }
+    } catch (e) {  return { success: false }; }
   }
 
   async getExperiences() {
@@ -937,7 +904,7 @@ class SupabaseDataLayer {
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
-    } catch (e) { console.error('getExperiences:', e); return []; }
+    } catch (e) {  return []; }
   }
 }
 
@@ -946,12 +913,10 @@ let appData = null;
 
 function initializeApp() {
   if (!supabaseClient) {
-    console.error('[App] Cannot initialize app - Supabase client not ready');
     return false;
   }
   if (!appData) {
     appData = new SupabaseDataLayer();
-    console.log('[App] SupabaseDataLayer initialized');
   }
   return true;
 }
@@ -975,8 +940,8 @@ if (supabaseClient) {
 // ============================================================================
 // CLOUDINARY UPLOAD UTILITY
 // ============================================================================
-const CLOUDINARY_CLOUD_NAME = 'djhrlkjzw';
-const CLOUDINARY_UPLOAD_PRESET = 'mwj3qjc6';
+const CLOUDINARY_CLOUD_NAME = APP_CONFIG.CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_UPLOAD_PRESET = APP_CONFIG.CLOUDINARY_UPLOAD_PRESET;
 
 async function uploadToCloudinary(file, folder = 'aroosh') {
   if (!file) return null;
@@ -994,7 +959,6 @@ async function uploadToCloudinary(file, folder = 'aroosh') {
     const data = await res.json();
     return data.secure_url;
   } catch (err) {
-    console.error('[Cloudinary] Upload error:', err);
     UI.showAlert('File upload failed. Please try again.', 'error');
     return null;
   }
@@ -1059,7 +1023,6 @@ class Router {
       try {
         await handler(hash);
       } catch (err) {
-        console.error('[Router] Error in route handler:', err);
       }
       if (typeof renderSidebar === 'function') {
         renderSidebar();
@@ -1200,7 +1163,6 @@ function requireRole(allowedRoles) {
 // PAGE 1: HOME
 async function renderHome() {
   if (!appData) {
-    console.error('[Home] appData not initialized');
     return;
   }
   let user, announcements, posts, experiences;
@@ -1211,7 +1173,6 @@ async function renderHome() {
     const allExperiences = await appData.getExperiences() || [];
     experiences = allExperiences.filter(e => e.status === 'approved');
   } catch(dataErr) {
-    console.error('[Home] Data fetch error:', dataErr);
     user = appData.getCurrentUser();
     announcements = []; posts = []; experiences = [];
   }
@@ -1461,7 +1422,6 @@ async function renderHome() {
 // PAGE 2: ROLE SELECTION
 function renderRoleSelection() {
   if (!appData) {
-    console.error('[RoleSelection] appData not initialized');
     return;
   }
   const html = `
@@ -1503,7 +1463,6 @@ function renderRoleSelection() {
 // PAGE 3: STUDENT SIGN UP
 function renderStudentSignUp() {
   if (!appData) {
-    console.error('[StudentSignUp] appData not initialized');
     return;
   }
   const html = `
@@ -1661,7 +1620,6 @@ function renderStudentSignUp() {
 // PAGE 4: TUTOR SIGN UP
 function renderTutorSignUp() {
   if (!appData) {
-    console.error('[TutorSignUp] appData not initialized');
     return;
   }
   const html = `
@@ -1824,7 +1782,6 @@ function renderTutorSignUp() {
 // [DECLARED GLOBALLY SO SKELETON HANDLER WORKS PERFECTLY]
 async function renderFindTutors() {
   if (!appData) {
-    console.error('[FindTutors] appData not initialized');
     return;
   }
 
@@ -1866,7 +1823,6 @@ async function renderFindTutors() {
     try {
       tutors = await appData.getTutors() || [];
     } catch (err) {
-      console.error('[FindTutors] Error fetching tutors:', err);
       tutors = [];
     }
 
@@ -2032,7 +1988,6 @@ async function renderFindTutors() {
       });
     }
   } catch (error) {
-    console.error('[FindTutors] Critical error:', error);
     UI.showAlert('Failed to load tutors. Please try again.', 'error');
     // Show empty state on error
     UI.setContent(`
@@ -2052,7 +2007,6 @@ async function renderFindTutors() {
 // PAGE 6: TUTOR PROFILE
 async function renderTutorProfile(hash) {
   if (!appData) {
-    console.error('[TutorProfile] appData not initialized');
     return;
   }
   const tutorId = hash.split('/')[2];
@@ -2336,7 +2290,6 @@ function sendMessage(tutorId, tutorName) {
 // PAGE 7: STUDENT DASHBOARD
 async function renderStudentDashboard() {
   if (!appData) {
-    console.error('[StudentDashboard] appData not initialized');
     return;
   }
   if (!requireRole(['student'])) return;
@@ -2595,7 +2548,6 @@ function leaveReview(bookingId) {
 // PAGE 8: TUTOR DASHBOARD
 async function renderTutorDashboard() {
   if (!appData) {
-    console.error('[TutorDashboard] appData not initialized');
     return;
   }
   if (!requireRole(['tutor'])) return;
@@ -2867,7 +2819,6 @@ async function refreshChatThread() {
 
 async function renderChat() {
   if (!appData) {
-    console.error('[Chat] appData not initialized');
     return;
   }
   if (!requireRole(['student', 'tutor', 'admin'])) return;
@@ -3042,7 +2993,6 @@ window.sendChatMessage = async () => {
 // PAGE 10: ASSIGNMENTS
 function renderAssignments() {
   if (!appData) {
-    console.error('[Assignments] appData not initialized');
     return;
   }
   if (!requireRole(['student', 'tutor', 'admin'])) return;
@@ -3274,7 +3224,6 @@ function attachSlotListeners() {
 
 function renderSchedule() {
   if (!appData) {
-    console.error('[Schedule] appData not initialized');
     return;
   }
   if (!requireRole(['student', 'tutor', 'admin'])) return;
@@ -3353,7 +3302,6 @@ function renderSchedule() {
 // PAGE 12: LEADERBOARD
 function renderLeaderboard() {
   if (!appData) {
-    console.error('[Leaderboard] appData not initialized');
     return;
   }
   const leaderboard = appData.getLeaderboard();
@@ -3483,7 +3431,6 @@ window.switchLeaderboardTab = (tabIndex) => {
 // PAGE 17: ADMIN DASHBOARD
 async function renderAdminDashboard() {
   if (!appData) {
-    console.error('[AdminDashboard] appData not initialized');
     return;
   }
   const user = appData.getCurrentUser();
@@ -3631,7 +3578,6 @@ window.rejectApplicationDashboard = async (appId) => {
 // PAGE 18: ADMIN ANALYTICS
 function renderAdminAnalytics() {
   if (!appData) {
-    console.error('[AdminAnalytics] appData not initialized');
     return;
   }
   const user = appData.getCurrentUser();
@@ -3694,7 +3640,7 @@ function renderAdminAnalytics() {
 
 // PAGE 19: ADMIN APPROVALS (Sessions + Tutor Applications)
 async function renderAdminApprovals() {
-  if (!appData) { console.error('[AdminApprovals] appData not initialized'); return; }
+  if (!appData) {  return; }
   const user = appData.getCurrentUser();
   if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admins Only!', 'danger');
@@ -3831,7 +3777,6 @@ window.rejectApplication = async (appId) => {
 // PAGE 20: ADMIN SESSIONS
 async function renderAdminSessions() {
   if (!appData) {
-    console.error('[AdminSessions] appData not initialized');
     return;
   }
   const user = appData.getCurrentUser();
@@ -4053,7 +3998,6 @@ window.cancelSession = async (bookingId) => {
 // PAGE 21: ADMIN ANNOUNCEMENTS & POSTS
 async function renderAdminAnnouncements() {
   if (!appData) {
-    console.error('[AdminAnnouncements] appData not initialized');
     return;
   }
   const user = appData.getCurrentUser();
@@ -4399,7 +4343,6 @@ window.removePostMedia = async (id) => {
 // PAGE 22: ADMIN FEEDBACK
 async function renderAdminFeedback() {
   if (!appData) {
-    console.error('[AdminFeedback] appData not initialized');
     return;
   }
   const user = appData.getCurrentUser();
@@ -4490,7 +4433,6 @@ window.deleteFeedback = async (id) => {
 // PAGE 23: ADMIN MANAGE TUTORS
 async function renderAdminManageTutors() {
   if (!appData) {
-    console.error('[AdminManageTutors] appData not initialized');
     return;
   }
   const user = appData.getCurrentUser();
@@ -4603,7 +4545,6 @@ async function renderAdminManageTutors() {
         UI.showAlert('Error adding tutor. Please try again.', 'danger');
       }
     } catch (error) {
-      console.error('Error in addTutorForm:', error);
       UI.showAlert('Error: ' + error.message, 'danger');
     }
   });
@@ -4677,7 +4618,6 @@ window.editTutor = async (id) => {
           UI.showAlert('Error updating tutor.', 'danger');
         }
       } catch (error) {
-        console.error('Error updating tutor:', error);
         UI.showAlert('Error: ' + error.message, 'danger');
       }
     });
@@ -4697,7 +4637,6 @@ window.toggleTutorAvailability = async (id) => {
       }
     }
   } catch (error) {
-    console.error('Error toggling tutor availability:', error);
     UI.showAlert('Error: ' + error.message, 'danger');
   }
 };
@@ -4718,7 +4657,6 @@ window.deleteUser = async (id) => {
         UI.showAlert('Error deleting user.', 'danger');
       }
     } catch (error) {
-      console.error('Error deleting user:', error);
       UI.showAlert('Error: ' + error.message, 'danger');
     }
   }
@@ -4727,7 +4665,6 @@ window.deleteUser = async (id) => {
 // PAGE 24: ADMIN MANAGE STUDENTS
 async function renderAdminManageStudents() {
   if (!appData) {
-    console.error('[AdminManageStudents] appData not initialized');
     return;
   }
   const user = appData.getCurrentUser();
@@ -4819,7 +4756,6 @@ async function renderAdminManageStudents() {
         UI.showAlert('Error adding student. Please try again.', 'danger');
       }
     } catch (error) {
-      console.error('Error in addStudentForm:', error);
       UI.showAlert('Error: ' + error.message, 'danger');
     }
   });
@@ -4878,7 +4814,6 @@ window.editStudent = async (id) => {
           UI.showAlert('Error updating student.', 'danger');
         }
       } catch (error) {
-        console.error('Error updating student:', error);
         UI.showAlert('Error: ' + error.message, 'danger');
       }
     });
@@ -4891,7 +4826,7 @@ window.editStudent = async (id) => {
 
 class WhatsAppComponent {
   constructor(config = {}) {
-    this.phoneNumber = config.phoneNumber || '+1234567890';
+    this.phoneNumber = config.phoneNumber || APP_CONFIG.WHATSAPP_NUMBER;
     this.maxChars = 1000;
     this.init();
   }
@@ -4984,7 +4919,6 @@ class WhatsAppComponent {
   }
 
   showValidationError(msg) {
-    console.warn('Validation Warning:', msg);
   }
 
   createWhatsAppMessage() {
@@ -5014,7 +4948,6 @@ class WhatsAppComponent {
       this.showSuccess();
       setTimeout(() => this.closeModal(), 800);
     } catch (e) {
-      console.error(e);
     } finally {
       if (this.sendBtn) {
         this.sendBtn.disabled = false;
@@ -5040,7 +4973,6 @@ class WhatsAppComponent {
 
 async function renderUserExperiences() {
   if (!appData) {
-    console.error('[UserExperiences] appData not initialized');
     return;
   }
   const allExp = await appData.getExperiences() || [];
@@ -5159,7 +5091,6 @@ async function renderUserExperiences() {
 // PAGE 26: ADMIN MANAGE EXPERIENCES
 async function renderAdminExperiences() {
   if (!appData) {
-    console.error('[AdminExperiences] appData not initialized');
     return;
   }
   const user = appData.getCurrentUser();
@@ -5396,9 +5327,9 @@ function initCounterAnimations() {
 
 // PUBLIC PAGES: Announcements & Posts (visible to all users including guests)
 async function renderPublicAnnouncements() {
-  if (!appData) { console.error('[Announcements] appData not initialized'); return; }
+  if (!appData) {  return; }
   let announcements = [];
-  try { announcements = await appData.getAnnouncements() || []; } catch(e) { console.error(e); }
+  try { announcements = await appData.getAnnouncements() || []; } catch(e) {  }
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
@@ -5427,9 +5358,9 @@ async function renderPublicAnnouncements() {
 }
 
 async function renderPublicPosts() {
-  if (!appData) { console.error('[Posts] appData not initialized'); return; }
+  if (!appData) {  return; }
   let posts = [];
-  try { posts = await appData.getPosts() || []; } catch(e) { console.error(e); }
+  try { posts = await appData.getPosts() || []; } catch(e) {  }
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
@@ -5730,7 +5661,6 @@ window.logout = async () => {
     // Redirect to home page (guest view)
     window.location.href = 'index.html';
   } catch (error) {
-    console.error('Logout error:', error);
     // Force redirect even if there's an error
     window.location.href = 'index.html';
   }
@@ -5802,12 +5732,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Ensure app is initialized before proceeding
   if (!appData) {
-    console.warn('[App] appData not initialized, waiting...');
     setTimeout(async () => {
       if (appData) {
         await startApp();
       } else {
-        console.error('[App] Failed to initialize appData');
       }
     }, 200);
   } else {
@@ -5825,7 +5753,6 @@ async function startApp() {
   try {
     await router.start();
   } catch(routerErr) {
-    console.error('[App] Router start error:', routerErr);
     // Show a friendly fallback if home page crashes
     const appDiv = document.getElementById('app');
     if (appDiv && !appDiv.innerHTML.trim()) {
@@ -5850,16 +5777,13 @@ async function startApp() {
   // Auth redirect
   setTimeout(() => {
     if (!appData) {
-      console.warn('[App] appData still not initialized in redirect check');
       return;
     }
     const user = appData.getCurrentUser();
-    console.log('[App] Redirect check — currentUser:', user);
     if (user) {
       const hash = window.location.hash.slice(1) || '/';
       if (hash === '/' || hash === '') {
         const role = user.role;
-        console.log('[App] Redirecting to dashboard for role:', role);
         if (role === 'student') router.navigate('/student-dashboard');
         else if (role === 'tutor') router.navigate('/tutor-dashboard');
         else if (role === 'admin') router.navigate('/admin');

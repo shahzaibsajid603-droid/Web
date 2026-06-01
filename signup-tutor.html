@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://xqcrkklhhwsuhnqphtxg.supabase.co; img-src 'self' data: blob:; base-uri 'self'; form-action 'self';"/>
 <title>Tutor Sign Up – Aroosh Online Tutors</title>
+<link rel="icon" type="image/png" href="aroosh-logo-light.png">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -139,10 +140,11 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
 <script>
 (function () {
-  const SUPABASE_URL = 'https://xqcrkklhhwsuhnqphtxg.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_h_xLHP7xPecIqhASfg26-Q_lDPFfvKy';
+  const SUPABASE_URL = APP_CONFIG.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = APP_CONFIG.SUPABASE_ANON_KEY;
   let client = null;
 
   function initSupabase() {
@@ -150,25 +152,19 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
     if (sdk && sdk.createClient) {
       try {
         client = sdk.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('[Signup Tutor] Supabase client initialized');
         checkAuth();
       } catch (e) { 
-        console.error('[Signup Tutor] Failed to create Supabase client:', e); 
       }
     } else {
-      console.warn('[Signup Tutor] Supabase SDK not ready, waiting for load...');
       window.addEventListener('load', function () {
         const sdk2 = window.supabase;
         if (sdk2 && sdk2.createClient) {
           try {
             client = sdk2.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            console.log('[Signup Tutor] Supabase client initialized on load');
             checkAuth();
           } catch (e) { 
-            console.error('[Signup Tutor] Failed to create Supabase client on load:', e); 
           }
         } else {
-          console.error('[Signup Tutor] Supabase SDK could not be loaded.');
         }
       });
     }
@@ -239,7 +235,6 @@ label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primar
       }
     } catch (err) {
       showError('email-error', 'An error occurred: ' + err.message);
-      console.error(err);
     } finally {
       btn.classList.remove('loading'); btn.disabled = false;
     }
