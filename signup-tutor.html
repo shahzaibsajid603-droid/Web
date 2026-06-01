@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://xqcrkklhhwsuhnqphtxg.supabase.co; img-src 'self' data: blob:; base-uri 'self'; form-action 'self';"/>
+<title>Tutor Sign Up – Aroosh Online Tutors</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --color-primary:#8a307f;--color-secondary:#79a7d3;--color-accent:#6883bc;
+  --color-background:#faf9fc;--color-surface:#ffffff;--color-muted:#e8e5f0;
+  --color-text-primary:#2d1b3d;--color-text-secondary:#6b5b7f;
+  --color-success:#10b981;--color-error:#ef4444;
+  --radius-md:8px;--radius-lg:12px;--radius-xl:16px;
+  --font:'Inter',sans-serif;
+}
+body{
+  font-family:var(--font);
+  background: linear-gradient(145deg,#2d1b3d 0%,#4a3a5c 45%,#3a2456 70%,#2d1b3d 100%);
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  padding:24px;position:relative;overflow:hidden;
+}
+body::before{content:'';position:absolute;width:400px;height:400px;
+  background:radial-gradient(circle,rgba(138,48,127,.35) 0%,transparent 70%);
+  top:-80px;left:-80px;border-radius:50%;
+}
+body::after{content:'';position:absolute;width:350px;height:350px;
+  background:radial-gradient(circle,rgba(121,167,211,.25) 0%,transparent 70%);
+  bottom:-60px;right:-60px;border-radius:50%;
+}
+.auth-container{position:relative;z-index:2;width:100%;max-width:420px}
+.card{
+  background:var(--color-surface);border-radius:var(--radius-xl);
+  padding:36px 32px 32px;box-shadow:0 20px 60px rgba(0,0,0,.3);
+  animation:fadeUp .5s ease both;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.brand{display:flex;align-items:center;justify-content:center;margin-bottom:24px}
+.brand-logo{height:64px;width:auto;max-width:100%;object-fit:contain;border-radius:var(--radius-md)}
+h1{font-size:22px;font-weight:800;color:var(--color-text-primary);margin-bottom:6px}
+.subtitle{font-size:13px;color:var(--color-text-secondary);margin-bottom:24px}
+.form-group{margin-bottom:16px}
+label{display:block;font-size:13px;font-weight:600;color:var(--color-text-primary);margin-bottom:6px}
+.form-input{
+  width:100%;padding:12px 14px;border:1.5px solid var(--color-muted);border-radius:var(--radius-md);
+  font-size:14px;font-family:var(--font);background:var(--color-background);color:var(--color-text-primary);
+  transition:all .2s;outline:none;
+}
+.form-input:focus{border-color:var(--color-primary);background:var(--color-surface);box-shadow:0 0 0 3px rgba(138,48,127,.1)}
+.form-input::placeholder{color:#b0a8c0}
+.btn-primary{
+  width:100%;padding:13px;background:linear-gradient(135deg,var(--color-primary),var(--color-secondary));
+  color:#fff;border:none;border-radius:var(--radius-lg);font-size:15px;font-weight:700;
+  font-family:var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(138,48,127,.4);
+  transition:all .2s;position:relative;
+}
+.btn-primary:hover:not(:disabled){transform:translateY(-1px)}
+.btn-primary:active:not(:disabled){transform:scale(.98)}
+.btn-primary:disabled{opacity:.6;cursor:not-allowed}
+.btn-primary .loader{
+  display:none;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;
+  border-radius:50%;animation:spin .8s linear infinite;position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+}
+.btn-primary.loading{color:transparent}
+.btn-primary.loading .loader{display:block}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+.error-message{font-size:12px;color:var(--color-error);margin-top:4px;display:none}
+.error-message.show{display:block}
+.success-message{
+  background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(16,185,129,.05));
+  border:1px solid rgba(16,185,129,.3);color:var(--color-success);
+  padding:12px 14px;border-radius:var(--radius-md);font-size:13px;margin-bottom:16px;display:none;
+}
+.success-message.show{display:block}
+.auth-toggle{text-align:center;margin-top:20px;font-size:13px;color:var(--color-text-secondary)}
+.auth-toggle a{color:var(--color-primary);font-weight:700;text-decoration:none}
+.auth-toggle a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<div class="auth-container">
+  <div class="card">
+    <div class="brand">
+      <img src="aroosh-logo-light.png" alt="Aroosh Online Tutors" class="brand-logo"/>
+    </div>
+
+    <h1>Create Your Account</h1>
+    <p class="subtitle">Tutor — Step 1 of 2</p>
+
+    <div class="success-message" id="success-msg"></div>
+
+    <form id="tutorSignupForm">
+      <div class="form-group">
+        <label for="name">Full Name</label>
+        <input class="form-input" type="text" id="name" placeholder="John Doe" required/>
+        <div class="error-message" id="name-error"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input class="form-input" type="email" id="email" placeholder="you@example.com" required/>
+        <div class="error-message" id="email-error"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input class="form-input" type="password" id="password" placeholder="At least 6 characters" minlength="6" required/>
+        <div class="error-message" id="password-error"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="confirm">Confirm Password</label>
+        <input class="form-input" type="password" id="confirm" placeholder="Confirm password" required/>
+        <div class="error-message" id="confirm-error"></div>
+      </div>
+
+      <div class="form-group" style="margin-top:8px;">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-weight:400;font-size:13px;">
+          <input type="checkbox" id="agree-terms" required style="margin-top:3px;accent-color:var(--color-primary);"/>
+          <span>I agree to the <a href="terms-of-service.html" target="_blank" style="color:var(--color-primary);font-weight:600;text-decoration:none;">Terms of Service</a> and <a href="privacy-policy.html" target="_blank" style="color:var(--color-primary);font-weight:600;text-decoration:none;">Privacy Policy</a></span>
+        </label>
+        <div class="error-message" id="agree-error"></div>
+      </div>
+
+      <button type="submit" class="btn-primary" id="submit-btn">
+        Create Account
+        <div class="loader"></div>
+      </button>
+    </form>
+
+    <div class="auth-toggle">
+      Already have an account? <a href="login.html">Sign in</a>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+  const SUPABASE_URL = 'https://xqcrkklhhwsuhnqphtxg.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_h_xLHP7xPecIqhASfg26-Q_lDPFfvKy';
+  let client = null;
+
+  function initSupabase() {
+    const sdk = window.supabase;
+    if (sdk && sdk.createClient) {
+      try {
+        client = sdk.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('[Signup Tutor] Supabase client initialized');
+        checkAuth();
+      } catch (e) { 
+        console.error('[Signup Tutor] Failed to create Supabase client:', e); 
+      }
+    } else {
+      console.warn('[Signup Tutor] Supabase SDK not ready, waiting for load...');
+      window.addEventListener('load', function () {
+        const sdk2 = window.supabase;
+        if (sdk2 && sdk2.createClient) {
+          try {
+            client = sdk2.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            console.log('[Signup Tutor] Supabase client initialized on load');
+            checkAuth();
+          } catch (e) { 
+            console.error('[Signup Tutor] Failed to create Supabase client on load:', e); 
+          }
+        } else {
+          console.error('[Signup Tutor] Supabase SDK could not be loaded.');
+        }
+      });
+    }
+  }
+
+  // If already logged in, send to dashboard
+  async function checkAuth() {
+    if (!client) return;
+    try {
+      const { data: { session } } = await client.auth.getSession();
+      if (session) {
+        const { data: profile } = await client.from('profiles').select('role').eq('id', session.user.id).single();
+        const role = profile?.role || 'tutor';
+        window.location.href = role === 'tutor' ? 'index.html#/tutor-dashboard' : 'index.html#/student-dashboard';
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function showError(id, msg) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = msg; el.classList.add('show'); }
+  }
+  function clearErrors() {
+    document.querySelectorAll('.error-message').forEach(function (el) {
+      el.classList.remove('show'); el.textContent = '';
+    });
+  }
+
+  document.getElementById('tutorSignupForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    clearErrors();
+    if (!client) { showError('email-error', 'System not ready. Please refresh.'); return; }
+
+    const name = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm').value;
+
+    let hasError = false;
+    if (!name || name.length < 2) { showError('name-error', 'Name must be at least 2 characters'); hasError = true; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showError('email-error', 'Enter a valid email'); hasError = true; }
+    if (!password || password.length < 6) { showError('password-error', 'Password must be at least 6 characters'); hasError = true; }
+    if (password !== confirm) { showError('confirm-error', 'Passwords do not match'); hasError = true; }
+    if (!document.getElementById('agree-terms').checked) { showError('agree-error', 'You must agree to the Terms of Service and Privacy Policy'); hasError = true; }
+    if (hasError) return;
+
+    const btn = document.getElementById('submit-btn');
+    btn.classList.add('loading'); btn.disabled = true;
+
+    try {
+      const { data, error } = await client.auth.signUp({
+        email, password,
+        options: { data: { name, role: 'tutor' } }
+      });
+
+      if (error) {
+        showError('email-error', error.message.includes('already registered') ? 'Email already registered' : error.message);
+        btn.classList.remove('loading'); btn.disabled = false;
+        return;
+      }
+
+      if (data.user && data.session) {
+        window.location.href = 'setup-tutor-profile.html';
+      } else {
+        const el = document.getElementById('success-msg');
+        el.textContent = 'Account created! Please check your email to verify, then sign in.';
+        el.classList.add('show');
+      }
+    } catch (err) {
+      showError('email-error', 'An error occurred: ' + err.message);
+      console.error(err);
+    } finally {
+      btn.classList.remove('loading'); btn.disabled = false;
+    }
+  });
+
+  initSupabase();
+})();
+</script>
+</body>
+</html>

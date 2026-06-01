@@ -1,12 +1,46 @@
 // ============================================================================
-// AROOSH'S ONLINE TUTORS - COMPLETE APPLICATION REDESIGNED
+// AROOSH ONLINE TUTORS - COMPLETE APPLICATION
 // ============================================================================
+
+// Supabase Configuration
+// SECURITY: ONLY the anon (public) key is used here. NEVER expose the
+// service_role key on the frontend — it bypasses all RLS policies.
+// All data access is gated by Row Level Security (RLS) enforced server-side.
+const SUPABASE_URL = 'https://xqcrkklhhwsuhnqphtxg.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_h_xLHP7xPecIqhASfg26-Q_lDPFfvKy';
+
+// Initialize Supabase client robustly
+let supabaseClient;
+function initSupabaseClient() {
+  if (window.supabase && window.supabase.createClient) {
+    try {
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('[App] Supabase client initialized');
+      return true;
+    } catch (err) {
+      console.error('Failed to create Supabase client in app.js:', err);
+    }
+  }
+  return false;
+}
+if (!initSupabaseClient()) {
+  console.warn('[App] Supabase SDK not ready, waiting...');
+  window.addEventListener('load', () => {
+    if (!supabaseClient) initSupabaseClient();
+  });
+}
 
 // Global Sanitization Helper
 function sanitize(str) {
   if (str === null || str === undefined) return '';
   if (typeof str !== 'string') str = String(str);
-  return str.replace(/[&<>"']/g, (m) => {
+  // Strip script tags and event handlers first
+  let cleaned = str
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<script[^>]*\/>/gi, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '');
+  return cleaned.replace(/[&<>"']/g, (m) => {
     switch (m) {
       case '&': return '&amp;';
       case '<': return '&lt;';
@@ -16,6 +50,61 @@ function sanitize(str) {
       default: return m;
     }
   });
+}
+
+// Strip dangerous content before storing in database
+function sanitizeForStorage(str) {
+  if (str === null || str === undefined) return '';
+  if (typeof str !== 'string') str = String(str);
+  return str
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<script[^>]*\/>/gi, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '') // strip control chars
+    .trim();
+}
+
+
+
+function normalizeRole(role) {
+  if (!role) return 'guest';
+  return String(role).toLowerCase();
+}
+
+const ADMIN_EMAIL = 'arooshonlinetutors@gmail.com';
+
+function isAdmin(user) {
+  if (!user) return false;
+  return user.email === ADMIN_EMAIL || normalizeRole(user.role) === 'admin';
+}
+
+
+
+// Helper function to render avatar - returns HTML for emoji or image
+function renderAvatar(avatar, size = 60, alt = 'Avatar') {
+  if (!avatar) avatar = '👤';
+  // Check if avatar is a base64 image or URL
+  if (typeof avatar === 'string' && (avatar.startsWith('data:image') || avatar.startsWith('http'))) {
+    return `<img src="${sanitize(avatar)}" alt="${sanitize(alt)}" style="width: ${size}px; height: ${size}px; object-fit: cover; border-radius: 50%; border: 2px solid var(--color-muted);">`;
+  }
+  // Return emoji as text
+  return sanitize(avatar);
+}
+
+// Recursively sanitize all string values in an object before database storage
+function sanitizeObjectStrings(obj) {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') return sanitizeForStorage(obj);
+  if (Array.isArray(obj)) return obj.map(sanitizeObjectStrings);
+  if (typeof obj === 'object') {
+    const out = {};
+    for (const key of Object.keys(obj)) {
+      out[key] = sanitizeObjectStrings(obj[key]);
+    }
+    return out;
+  }
+  return obj;
 }
 
 // Ensure dark mode state is loaded immediately on start
@@ -33,823 +122,883 @@ window.toggleDarkMode = () => {
   }
 };
 
+
+
 // ============================================================================
-// 1. DATA LAYER & MOCK DATA
+// 1. supabaseClient DATA LAYER
 // ============================================================================
 
-class AppData {
+class SupabaseDataLayer {
   constructor() {
-    this._cache = null;
-    this.initData();
+    this.currentUser = null;
+    this._authReady = new Promise(resolve => { this._resolveAuth = resolve; });
+    this.initAuth();
   }
 
-  initData() {
-    if (!localStorage.getItem('appData')) {
-      const mockData = {
-        currentUser: null,
-        users: [
-          {
-            id: 'user1',
-            name: 'Rahul Kumar',
-            email: 'rahul@example.com',
-            role: 'student',
-            gradeLevel: 'High School',
-            interests: ['Math', 'Science'],
-            avatar: '👤'
-          },
-          {
-            id: 'tutor1',
-            name: 'Priya Singh',
-            email: 'priya@example.com',
-            role: 'tutor',
-            bio: 'Experienced math tutor with 5+ years of teaching. Visual and Kinesthetic learner advocate.',
-            experience: '5-10yr',
-            qualifications: 'B.Sc Mathematics, M.Ed',
-            hourlyRate: 25,
-            subjects: ['Math', 'Physics'],
-            avatar: '👨‍🏫',
-            rating: 4.8,
-            totalReviews: 42,
-            isAvailable: true,
-            yearsOfExperience: 7,
-            experienceLevel: 'Expert',
-            availability: []
-          },
-          {
-            id: 'tutor2',
-            name: 'Amit Patel',
-            bio: 'English & Literature specialist, helps with essays and writing. Focuses on auditory feedback.',
-            hourlyRate: 22,
-            experienceLevel: 'Intermediate',
-            yearsOfExperience: 3,
-            rating: 4.6,
-            totalReviews: 28,
-            isAvailable: true,
-            subjects: ['English', 'History'],
-            avatar: '👨‍🏫',
-            email: 'amit@example.com',
-            qualifications: 'B.A English',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'tutor3',
-            name: 'Sophia Chen',
-            bio: 'Science tutor, specialized in Biology and Chemistry. Hands-on learning techniques.',
-            hourlyRate: 28,
-            experienceLevel: 'Expert',
-            yearsOfExperience: 8,
-            rating: 4.9,
-            totalReviews: 56,
-            isAvailable: false,
-            subjects: ['Science', 'Chemistry', 'Biology'],
-            avatar: '👩‍🏫',
-            email: 'sophia@example.com',
-            qualifications: 'B.Sc Biology, B.Ed',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'tutor4',
-            name: 'Mohammed Al-Rashid',
-            bio: 'Languages specialist - Arabic, Spanish, French.',
-            hourlyRate: 20,
-            experienceLevel: 'Intermediate',
-            yearsOfExperience: 4,
-            rating: 4.7,
-            totalReviews: 35,
-            isAvailable: true,
-            subjects: ['Languages', 'Arabic', 'Spanish'],
-            avatar: '👨‍🏫',
-            email: 'mohammed@example.com',
-            qualifications: 'B.A Linguistics',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'tutor5',
-            name: 'Emma Wilson',
-            bio: 'Technology & coding tutor, specializes in web development and visual diagrams.',
-            hourlyRate: 35,
-            experienceLevel: 'Expert',
-            yearsOfExperience: 9,
-            rating: 4.9,
-            totalReviews: 63,
-            isAvailable: true,
-            subjects: ['Technology', 'Programming'],
-            avatar: '👩‍💻',
-            email: 'emma@example.com',
-            qualifications: 'B.Tech Computer Science',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'tutor6',
-            name: 'David Martinez',
-            bio: 'Arts & design tutor, creative coaching for all skill levels.',
-            hourlyRate: 18,
-            experienceLevel: 'Beginner',
-            yearsOfExperience: 2,
-            rating: 4.5,
-            totalReviews: 18,
-            isAvailable: true,
-            subjects: ['Arts', 'Design'],
-            avatar: '🎨',
-            email: 'david@example.com',
-            qualifications: 'B.A Fine Arts',
-            role: 'tutor',
-            availability: []
-          },
-          {
-            id: 'admin1',
-            name: 'Admin User',
-            email: 'admin@example.com',
-            role: 'admin',
-            avatar: '🛡️'
+  async initAuth() {
+    try {
+      if (!supabaseClient) {
+        console.error('[Auth] Supabase client not initialized');
+        this.currentUser = null;
+        return;
+      }
+      // Check for existing session
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      console.log('[Auth] Session check:', session ? 'found' : 'none');
+      if (session) {
+        await this.loadUserProfile(session.user.id);
+        console.log('[Auth] Profile loaded, currentUser:', this.currentUser);
+        this._redirectToDashboardIfOnHome();
+      } else {
+        this.currentUser = null;
+      }
+      if (this._resolveAuth) { this._resolveAuth(); this._resolveAuth = null; }
+
+      // Listen for auth changes
+      supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        console.log('[Auth] State change:', event);
+        if (session) {
+          await this.loadUserProfile(session.user.id);
+          if (typeof renderSidebar === 'function') renderSidebar();
+          if (event === 'SIGNED_IN') {
+            this._redirectToDashboardIfOnHome();
           }
-        ],
-        bookings: [
-          {
-            id: 'booking1',
-            studentId: 'user1',
-            tutorId: 'tutor1',
-            date: new Date().toISOString().split('T')[0],
-            time: '14:00',
-            duration: 60,
-            subject: 'Math',
-            status: 'confirmed',
-            notes: 'Need help with calculus'
-          },
-          {
-            id: 'booking2',
-            studentId: 'user1',
-            tutorId: 'tutor2',
-            date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            time: '15:00',
-            duration: 45,
-            subject: 'English',
-            status: 'pending',
-            notes: 'Essay review'
-          },
-          {
-            id: 'booking3',
-            studentId: 'user1',
-            tutorId: 'tutor3',
-            date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            time: '10:00',
-            duration: 60,
-            subject: 'Chemistry',
-            status: 'completed',
-            notes: 'Periodic table assignment review'
-          },
-          {
-            id: 'booking4',
-            studentId: 'user1',
-            tutorId: 'tutor4',
-            date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            time: '16:00',
-            duration: 30,
-            subject: 'Spanish',
-            status: 'confirmed',
-            notes: 'Conversation practice and grammar review'
-          },
-          {
-            id: 'booking5',
-            studentId: 'user1',
-            tutorId: 'tutor1',
-            date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            time: '11:00',
-            duration: 60,
-            subject: 'Math',
-            status: 'cancelled',
-            notes: 'Was rescheduled due to conflict'
-          }
-        ],
-        reviews: [
-          {
-            id: 'review1',
-            bookingId: 'booking3',
-            tutorId: 'tutor3',
-            studentId: 'user1',
-            rating: 5,
-            comment: 'Excellent tutor! Very knowledgeable and patient.',
-            date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          },
-          {
-            id: 'review2',
-            bookingId: 'booking1',
-            tutorId: 'tutor1',
-            studentId: 'user1',
-            rating: 5,
-            comment: 'Great session! Helped me understand complex formulas.',
-            date: new Date().toISOString().split('T')[0]
-          }
-        ],
-        assignments: [
-          {
-            id: 'assign1',
-            studentId: 'user1',
-            tutorId: 'tutor1',
-            title: 'Calculus Practice Set',
-            description: 'Solve the 20 problems in Section 3.2 of the textbook',
-            dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'pending',
-            grade: null,
-            feedback: null
-          },
-          {
-            id: 'assign2',
-            studentId: 'user1',
-            tutorId: 'tutor2',
-            title: 'Essay on Literature',
-            description: 'Write a 500-word essay on your favorite book',
-            dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'submitted',
-            grade: null,
-            feedback: null,
-            submittedDate: new Date().toISOString().split('T')[0]
-          },
-          {
-            id: 'assign3',
-            studentId: 'user1',
-            tutorId: 'tutor3',
-            title: 'Chemistry Lab Report',
-            description: 'Complete lab experiment and write a detailed report',
-            dueDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'graded',
-            grade: 88,
-            feedback: 'Good work! Your methodology was sound. Next time, include more analysis.',
-            submittedDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          }
-        ],
-        messages: [
-          {
-            id: 'msg1',
-            senderId: 'user1',
-            recipientId: 'tutor1',
-            content: 'Hi, when can we schedule our next session?',
-            timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-            read: true
-          },
-          {
-            id: 'msg2',
-            senderId: 'tutor1',
-            recipientId: 'user1',
-            content: 'How about next Tuesday at 2 PM?',
-            timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            read: true
-          },
-          {
-            id: 'msg3',
-            senderId: 'user1',
-            recipientId: 'tutor2',
-            content: 'Thank you for the essay feedback!',
-            timestamp: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
-            read: true
-          },
-          {
-            id: 'msg4',
-            senderId: 'tutor2',
-            recipientId: 'user1',
-            content: 'You\'re welcome! Keep up the good work.',
-            timestamp: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-            read: false
-          }
-        ],
-        tutorApplications: [
-          {
-            id: 'app1',
-            name: 'Neha Verma',
-            email: 'neha@example.com',
-            bio: 'Physics teacher with 2 years experience',
-            experience: '1-3yr',
-            qualifications: 'B.Sc Physics, B.Ed',
-            subjects: ['Physics'],
-            hourlyRate: 20,
-            status: 'pending',
-            appliedDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          },
-          {
-            id: 'app2',
-            name: 'James Thompson',
-            email: 'james@example.com',
-            bio: 'University student tutoring high school subjects',
-            experience: '<1yr',
-            qualifications: 'B.A In Progress',
-            subjects: ['Math', 'English'],
-            hourlyRate: 15,
-            status: 'pending',
-            appliedDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          },
-          {
-            id: 'app3',
-            name: 'Dr. Lisa Chang',
-            email: 'lisa@example.com',
-            bio: 'PhD in Chemistry, published researcher',
-            experience: '10+yr',
-            qualifications: 'Ph.D Chemistry',
-            subjects: ['Chemistry', 'Science'],
-            hourlyRate: 45,
-            status: 'approved',
-            appliedDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          }
-        ],
-        leaderboard: {
-          students: [
-            { rank: 1, name: 'Aisha Khan', points: 2450, streak: 15 },
-            { rank: 2, name: 'Rahul Kumar', points: 2320, streak: 12 },
-            { rank: 3, name: 'Zara Ali', points: 2150, streak: 10 },
-            { rank: 4, name: 'Vikram Singh', points: 1980, streak: 8 },
-            { rank: 5, name: 'Priya Patel', points: 1850, streak: 7 },
-            { rank: 6, name: 'Mohammed Habib', points: 1720, streak: 6 },
-            { rank: 7, name: 'Chen Wei', points: 1530, streak: 4 }
-          ],
-          tutors: [
-            { rank: 1, name: 'Priya Singh', points: 3200, streak: 20 },
-            { rank: 2, name: 'Emma Wilson', points: 3050, streak: 18 },
-            { rank: 3, name: 'Sophia Chen', points: 2920, streak: 16 },
-            { rank: 4, name: 'Amit Patel', points: 2450, streak: 12 },
-            { rank: 5, name: 'David Martinez', points: 2100, streak: 10 },
-            { rank: 6, name: 'Mohammed Al-Rashid', points: 1950, streak: 8 }
-          ]
-        },
-        disputes: [
-          {
-            id: 'disp1',
-            caseNumber: 'CASE-001',
-            status: 'open',
-            filedDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            claimedAmount: 25,
-            studentName: 'Rahul Kumar',
-            tutorName: 'Priya Singh',
-            reason: 'Session quality',
-            description: 'Session was cut short, did not receive full service',
-            evidence: ['screenshot1.png'],
-            resolution: null
-          },
-          {
-            id: 'disp2',
-            caseNumber: 'CASE-002',
-            status: 'in_review',
-            filedDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            claimedAmount: 22,
-            studentName: 'Zara Ali',
-            tutorName: 'Amit Patel',
-            reason: 'No show',
-            description: 'Tutor did not appear for scheduled session',
-            evidence: ['email_confirmation.pdf'],
-            resolution: null
-          },
-          {
-            id: 'disp3',
-            caseNumber: 'CASE-003',
-            status: 'resolved',
-            filedDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            claimedAmount: 18,
-            studentName: 'Vikram Singh',
-            tutorName: 'David Martinez',
-            reason: 'Technical issues',
-            description: 'Connection problems during session',
-            evidence: [],
-            resolution: 'Refund approved - full session amount refunded'
-          }
-        ],
-        refunds: [
-          {
-            id: 'ref1',
-            studentName: 'Vikram Singh',
-            amount: 18,
-            reason: 'Technical issues',
-            sessionDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'approved'
-          },
-          {
-            id: 'ref2',
-            studentName: 'Priya Patel',
-            amount: 25,
-            reason: 'Session cancelled by tutor',
-            sessionDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'pending'
-          },
-          {
-            id: 'ref3',
-            studentName: 'Mohammed Habib',
-            amount: 22,
-            reason: 'Unsatisfactory service',
-            sessionDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            status: 'rejected'
-          }
-        ],
-        announcements: [
-          {
-            id: 'ann1',
-            title: 'Welcome to Aroosh Tutors!',
-            content: 'We are excited to launch our new tutoring platform. Connect with expert tutors and achieve your learning goals.',
-            type: 'announcement',
-            priority: 'high',
-            createdAt: new Date().toISOString(),
-            createdBy: 'admin1',
-            isActive: true
-          },
-          {
-            id: 'ann2',
-            title: 'New Math Tutor Available',
-            content: 'Dr. Lisa Chen has joined our platform with expertise in advanced mathematics and calculus.',
-            type: 'announcement',
-            priority: 'medium',
-            createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            createdBy: 'admin1',
-            isActive: true
-          }
-        ],
-        posts: [
-          {
-            id: 'post1',
-            title: 'Tips for Effective Online Learning',
-            content: 'Discover the best strategies for maximizing your online tutoring sessions. Create a dedicated study space, minimize distractions, and come prepared with questions.',
-            type: 'post',
-            category: 'Study Tips',
-            mediaType: null,
-            mediaUrl: null,
-            createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            createdBy: 'admin1',
-            isActive: true
-          },
-          {
-            id: 'post2',
-            title: 'Summer Learning Programs',
-            content: 'Enroll in our special summer courses to get ahead before the next academic year. Special discounts available for early registrations!',
-            type: 'post',
-            category: 'News',
-            mediaType: null,
-            mediaUrl: null,
-            createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            createdBy: 'admin1',
-            isActive: true
-          }
-        ],
-        feedback: [
-          {
-            id: 'fb1',
-            userId: 'user1',
-            userName: 'Rahul Kumar',
-            type: 'general',
-            subject: 'Platform Suggestion',
-            message: 'It would be great to have a video call feature directly in the platform.',
-            status: 'pending',
-            createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            response: null
-          },
-          {
-            id: 'fb2',
-            userId: 'user1',
-            userName: 'Rahul Kumar',
-            type: 'bug',
-            subject: 'Login Issue',
-            message: 'Sometimes the login page takes too long to load.',
-            status: 'resolved',
-            createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            response: 'Thank you for reporting. We have optimized the login page loading time.'
-          }
-        ]
-      };
-      this._cache = null;
-      localStorage.setItem('appData', JSON.stringify(mockData));
+        } else {
+          this.currentUser = null;
+          if (typeof renderSidebar === 'function') renderSidebar();
+        }
+      });
+    } catch (err) {
+      console.error('[Auth] initAuth error:', err);
+      this.currentUser = null;
+    } finally {
+      if (this._resolveAuth) { this._resolveAuth(); this._resolveAuth = null; }
     }
   }
 
-  getData() {
-    if (this._cache) {
-      return this._cache;
-    }
-    this._cache = JSON.parse(localStorage.getItem('appData')) || {};
-    return this._cache;
+  _redirectToDashboardIfOnHome() {
+    const hash = window.location.hash.slice(1) || '/';
+    if (hash !== '/' && hash !== '') return;
+    const role = normalizeRole(this.currentUser?.role);
+    if (role === 'student') window.location.hash = '#/student-dashboard';
+    else if (role === 'tutor') window.location.hash = '#/tutor-dashboard';
+    else if (role === 'admin') window.location.hash = '#/admin';
   }
 
-  setCurrentUser(user) {
-    const data = this.getData();
-    data.currentUser = user;
-    this._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
+  async loadUserProfile(userId) {
+    const buildFallbackProfile = async () => {
+      try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        const email = user?.email || '';
+        const detectedRole = (email === ADMIN_EMAIL) ? 'admin' : (user?.user_metadata?.role || 'student');
+        return {
+          id: userId,
+          email: email,
+          name: user?.user_metadata?.name || 'User',
+          role: detectedRole,
+          avatar: detectedRole === 'admin' ? '🛡️' : '👤',
+          isFallback: true
+        };
+      } catch (fallbackError) {
+        console.warn('Could not build fallback profile from auth user:', fallbackError);
+        return {
+          id: userId,
+          email: '',
+          name: 'User',
+          role: 'student',
+          avatar: '👤',
+          isFallback: true
+        };
+      }
+    };
+
+    try {
+      let { data, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Profile fetch failed, continuing with fallback profile:', error);
+        this.currentUser = await buildFallbackProfile();
+        return;
+      }
+
+      if (!data) {
+        console.warn('Profile not found. Executing self-healing profile creation...');
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        if (userError) {
+          console.warn('Could not read auth user, continuing with fallback profile:', userError);
+          this.currentUser = await buildFallbackProfile();
+          return;
+        }
+
+        const name = user.user_metadata?.name || 'User';
+        const role = (user.email === ADMIN_EMAIL) ? 'admin' : (user.user_metadata?.role || 'student');
+        const normalizedRole = normalizeRole(role);
+
+      const { data: newProfile, error: insertError } = await supabaseClient
+          .from('profiles')
+          .insert({
+            id: userId,
+            email: user.email,
+            name: name,
+            role: normalizedRole,
+            avatar: normalizedRole === 'admin' ? '🛡️' : '👤'
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Self-healing profile insert failed (RLS or other):', insertError);
+          data = await buildFallbackProfile();
+        } else {
+          data = newProfile;
+          console.log('Self-healing profile creation succeeded:', data);
+        }
+      }
+
+      if (data) data.role = normalizeRole(data.role);
+      this.currentUser = data || await buildFallbackProfile();
+    } catch (error) {
+      console.warn('Profile loading failed, continuing with fallback profile:', error);
+      this.currentUser = await buildFallbackProfile();
+    }
+  }
+
+  // Authentication
+  async signUp(email, password, name, role = 'student') {
+    try {
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name, role }
+        }
+      });
+
+      if (error) throw error;
+
+      // Create profile
+      if (data.user) {
+        await supabaseClient.from('profiles').insert({
+          id: data.user.id,
+          email: data.user.email,
+          name,
+          role
+        });
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  async signIn(email, password) {
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) throw error;
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  async signOut() {
+    try {
+      await supabaseClient.auth.signOut();
+      this.currentUser = null;
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 
   getCurrentUser() {
-    const data = this.getData();
-    return data.currentUser;
+    return this.currentUser;
   }
 
-  getTutors() {
-    const data = this.getData();
-    return (data.users || []).filter(u => u.role === 'tutor');
+  setCurrentUser(user) {
+    this.currentUser = user;
   }
 
-  getTutorById(id) {
-    return this.getTutors().find(t => t.id === id);
+  getData() {
+    if (!this._cache) {
+      try {
+        const raw = localStorage.getItem('appData');
+        this._cache = raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        this._cache = {};
+      }
+    }
+    if (!this._cache.users) this._cache.users = [];
+    if (!this._cache.posts) this._cache.posts = [];
+    if (!this._cache.feedback) this._cache.feedback = [];
+    if (!this._cache.experiences) this._cache.experiences = [];
+    if (!this._cache.announcements) this._cache.announcements = [];
+    if (!this._cache.tutorApplications) this._cache.tutorApplications = [];
+    return this._cache;
   }
 
-  getBookings() {
-    const data = this.getData();
-    return data.bookings || [];
+  // Users
+  async getTutors() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('role', 'tutor');
+
+      if (error) throw error;
+      if (data && data.length > 0) return data;
+    } catch (error) {
+      console.error('Error fetching tutors:', error);
+    }
+    // Fallback to localStorage if Supabase fails or is empty
+    const localData = this.getData();
+    return (localData.users || []).filter(u => u.role === 'tutor');
   }
 
-  getAssignments() {
-    const data = this.getData();
-    return data.assignments || [];
+  async getTutorById(id) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .eq('role', 'tutor')
+        .single();
+
+      if (error) throw error;
+      if (data) return data;
+    } catch (error) {
+      console.error('Error fetching tutor:', error);
+    }
+    // Fallback to localStorage
+    const localData = this.getData();
+    return (localData.users || []).find(u => u.id === id && u.role === 'tutor') || null;
   }
 
-  getReviews() {
-    const data = this.getData();
-    return data.reviews || [];
+  async getBookings() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('bookings')
+        .select(`
+          *,
+          student:profiles!bookings_student_id_fkey(name, email),
+          tutor:profiles!bookings_tutor_id_fkey(name, email)
+        `);
+
+      if (error) throw error;
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+      return [];
+    }
   }
 
-  getMessages() {
-    const data = this.getData();
-    return data.messages || [];
+  async addBooking(booking) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('bookings')
+        .insert({
+          ...sanitizeObjectStrings(booking),
+          student_id: booking.student_id || this.currentUser.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding booking:', error);
+      return null;
+    }
   }
 
-  addMessage(message) {
-    const data = this.getData();
-    if (!data.messages) data.messages = [];
-    data.messages.push({...message, id: 'msg' + Date.now()});
-    this._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
+  async updateBookingStatus(bookingId, status) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('bookings')
+        .update({ status })
+        .eq('id', bookingId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating booking:', error);
+      return null;
+    }
   }
 
+  async getAssignments() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('assignments')
+        .select(`
+          *,
+          student:profiles!assignments_student_id_fkey(name),
+          tutor:profiles!assignments_tutor_id_fkey(name)
+        `)
+        .or(`student_id.eq.${this.currentUser.id},tutor_id.eq.${this.currentUser.id}`);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching assignments:', error);
+      return [];
+    }
+  }
+
+  async addAssignment(assignment) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('assignments')
+        .insert({
+          ...sanitizeObjectStrings(assignment),
+          tutor_id: this.currentUser.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding assignment:', error);
+      return null;
+    }
+  }
+
+  async getReviews() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('reviews')
+        .select(`
+          *,
+          student:profiles!reviews_student_id_fkey(name),
+          tutor:profiles!reviews_tutor_id_fkey(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+      return [];
+    }
+  }
+
+  async addMessage(message) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('messages')
+        .insert({
+          ...sanitizeObjectStrings(message),
+          sender_id: this.currentUser.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding message:', error);
+      return null;
+    }
+  }
+
+  async getMessages() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('messages')
+        .select(`
+          *,
+          sender:profiles!messages_sender_id_fkey(name),
+          receiver:profiles!messages_receiver_id_fkey(name)
+        `)
+        .or(`sender_id.eq.${this.currentUser.id},receiver_id.eq.${this.currentUser.id}`)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      return [];
+    }
+  }
+
+  
+  // Announcements
+  async getAnnouncements() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('announcements')
+        .select(`
+          *,
+          author:profiles!announcements_author_id_fkey(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching announcements:', error);
+      return [];
+    }
+  }
+
+  async addAnnouncement(announcement) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('announcements')
+        .insert({
+          ...sanitizeObjectStrings(announcement),
+          author_id: this.currentUser.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding announcement:', error);
+      return null;
+    }
+  }
+
+  // Posts
+  async getPosts() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('posts')
+        .select(`
+          *,
+          author:profiles!posts_author_id_fkey(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      return [];
+    }
+  }
+
+  async addPost(post) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('posts')
+        .insert({
+          ...sanitizeObjectStrings(post),
+          author_id: this.currentUser.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding post:', error);
+      return null;
+    }
+  }
+
+  // Feedback
+  async getFeedback() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('feedback')
+        .select(`
+          *,
+          user:profiles!feedback_user_id_fkey(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching feedback:', error);
+      return [];
+    }
+  }
+
+  async addFeedback(feedback) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('feedback')
+        .insert({
+          ...sanitizeObjectStrings(feedback),
+          user_id: this.currentUser.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding feedback:', error);
+      return null;
+    }
+  }
+
+  // Tutor Applications
+  async getTutorApplications() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('tutor_applications')
+        .select('*')
+        .order('applied_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching tutor applications:', error);
+      return [];
+    }
+  }
+
+  async addTutorApplication(application) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('tutor_applications')
+        .insert(sanitizeObjectStrings(application))
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding tutor application:', error);
+      return null;
+    }
+  }
+
+  // Helper methods
   getLeaderboard() {
-    const data = this.getData();
-    return data.leaderboard || { students: [], tutors: [] };
+    // This would need to be implemented based on your specific criteria
+    return { students: [], tutors: [] };
   }
 
-  getDisputesList() {
-    const data = this.getData();
-    return data.disputes || [];
-  }
+  // Additional user management methods
+  async getUsers() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('*');
 
-  getRefundsList() {
-    const data = this.getData();
-    return data.refunds || [];
-  }
-
-  getTutorApplications() {
-    const data = this.getData();
-    return data.tutorApplications || [];
-  }
-
-  addBooking(booking) {
-    const data = this.getData();
-    if (!data.bookings) data.bookings = [];
-    data.bookings.push({ ...booking, id: 'booking' + Date.now() });
-    this._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
-  }
-
-  updateBookingStatus(bookingId, status) {
-    const data = this.getData();
-    if (data.bookings) {
-      const booking = data.bookings.find(b => b.id === bookingId);
-      if (booking) {
-        booking.status = status;
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return [];
     }
   }
 
-  addAssignment(assignment) {
-    const data = this.getData();
-    if (!data.assignments) data.assignments = [];
-    data.assignments.push({ ...assignment, id: 'assign' + Date.now() });
-    this._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
-  }
+  async getStudents() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('*')
+        .eq('role', 'student');
 
-  updateDisputeStatus(disputeId, status, resolution = null) {
-    const data = this.getData();
-    if (data.disputes) {
-      const dispute = data.disputes.find(d => d.id === disputeId);
-      if (dispute) {
-        dispute.status = status;
-        if (resolution) dispute.resolution = resolution;
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      return [];
     }
   }
 
-  updateRefundStatus(refundId, status) {
-    const data = this.getData();
-    if (data.refunds) {
-      const refund = data.refunds.find(r => r.id === refundId);
-      if (refund) {
-        refund.status = status;
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
+  async updateUser(id, updates) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .update(sanitizeObjectStrings(updates))
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating user:', error);
+      return null;
     }
   }
 
-  approveTutorApplication(appId) {
-    const data = this.getData();
-    if (data.tutorApplications) {
-      const app = data.tutorApplications.find(a => a.id === appId);
-      if (app) {
-        app.status = 'approved';
-        if (!data.users) data.users = [];
-        const exists = data.users.find(u => u.email === app.email);
-        if (!exists) {
-          data.users.push({
-            id: 'user' + Date.now(),
-            name: app.name,
-            email: app.email,
-            role: 'tutor',
-            bio: app.bio,
-            experience: app.experience,
-            qualifications: app.qualifications,
-            hourlyRate: app.hourlyRate,
-            subjects: app.subjects,
-            avatar: '👨‍🏫',
-            rating: 5.0,
-            totalReviews: 0,
-            isAvailable: true,
-            yearsOfExperience: parseInt(app.experience) || 3
-          });
-        }
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
+  async approveTutorApplication(appId) {
+    try {
+      // Get application details
+      const { data: app, error: fetchError } = await supabaseClient
+        .from('tutor_applications')
+        .select('*')
+        .eq('id', appId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Update application status
+      const { error: updateError } = await supabaseClient
+        .from('tutor_applications')
+        .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+        .eq('id', appId);
+
+      if (updateError) throw updateError;
+
+      return { success: true, application: app };
+    } catch (error) {
+      console.error('Error approving tutor application:', error);
+      return { success: false, error: error.message };
     }
   }
 
-  rejectTutorApplication(appId) {
-    const data = this.getData();
-    if (data.tutorApplications) {
-      const app = data.tutorApplications.find(a => a.id === appId);
-      if (app) {
-        app.status = 'rejected';
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
+  async rejectTutorApplication(appId) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('tutor_applications')
+        .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
+        .eq('id', appId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error rejecting tutor application:', error);
+      return null;
     }
   }
 
-  // Announcements CRUD
-  getAnnouncements() {
-    const data = this.getData();
-    return (data.announcements || []).filter(a => a.isActive);
-  }
+  // Experiences
+  async addExperience(experience) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('experiences')
+        .insert({
+          ...experience,
+          user_id: this.currentUser.id
+        })
+        .select()
+        .single();
 
-  getAllAnnouncements() {
-    const data = this.getData();
-    return data.announcements || [];
-  }
-
-  addAnnouncement(announcement) {
-    const data = this.getData();
-    if (!data.announcements) data.announcements = [];
-    data.announcements.push({ ...announcement, id: 'ann' + Date.now(), createdAt: new Date().toISOString() });
-    this._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
-  }
-
-  updateAnnouncement(id, updates) {
-    const data = this.getData();
-    if (data.announcements) {
-      const announcement = data.announcements.find(a => a.id === id);
-      if (announcement) {
-        Object.assign(announcement, updates);
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding experience:', error);
+      return null;
     }
   }
 
-  deleteAnnouncement(id) {
-    const data = this.getData();
-    if (data.announcements) {
-      data.announcements = data.announcements.filter(a => a.id !== id);
-      this._cache = null;
-      localStorage.setItem('appData', JSON.stringify(data));
+  async approveExperience(experienceId) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('experiences')
+        .update({ status: 'approved' })
+        .eq('id', experienceId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error approving experience:', error);
+      return null;
     }
   }
 
-  // Posts CRUD
-  getPosts() {
-    const data = this.getData();
-    return (data.posts || []).filter(p => p.isActive);
-  }
+  async deleteExperience(experienceId) {
+    try {
+      const { error } = await supabaseClient
+        .from('experiences')
+        .delete()
+        .eq('id', experienceId);
 
-  getAllPosts() {
-    const data = this.getData();
-    return data.posts || [];
-  }
-
-  addPost(post) {
-    const data = this.getData();
-    if (!data.posts) data.posts = [];
-    data.posts.push({ ...post, id: 'post' + Date.now(), createdAt: new Date().toISOString() });
-    this._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
-  }
-
-  updatePost(id, updates) {
-    const data = this.getData();
-    if (data.posts) {
-      const post = data.posts.find(p => p.id === id);
-      if (post) {
-        Object.assign(post, updates);
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting experience:', error);
+      return { success: false, error: error.message };
     }
   }
 
-  deletePost(id) {
-    const data = this.getData();
-    if (data.posts) {
-      data.posts = data.posts.filter(p => p.id !== id);
-      this._cache = null;
-      localStorage.setItem('appData', JSON.stringify(data));
-    }
+
+  // ── Async CRUD methods (Supabase) ─────────────────────────────────────────
+
+  async getAllAnnouncements() { return this.getAnnouncements(); }
+  async getAllPosts() { return this.getPosts(); }
+
+  async deleteAnnouncement(id) {
+    try {
+      const { error } = await supabaseClient.from('announcements').delete().eq('id', id);
+      if (error) throw error;
+      return { success: true };
+    } catch (e) { console.error('deleteAnnouncement:', e); return { success: false }; }
   }
 
-  // Feedback CRUD
-  getFeedback() {
-    const data = this.getData();
-    return data.feedback || [];
+  async updateAnnouncement(id, updates) {
+    try {
+      const { data, error } = await supabaseClient.from('announcements')
+        .update(sanitizeObjectStrings(updates)).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    } catch (e) { console.error('updateAnnouncement:', e); return null; }
   }
 
-  addFeedback(feedback) {
-    const data = this.getData();
-    if (!data.feedback) data.feedback = [];
-    data.feedback.push({ ...feedback, id: 'fb' + Date.now(), createdAt: new Date().toISOString(), status: 'pending' });
-    this._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
+  async deletePost(id) {
+    try {
+      const { error } = await supabaseClient.from('posts').delete().eq('id', id);
+      if (error) throw error;
+      return { success: true };
+    } catch (e) { console.error('deletePost:', e); return { success: false }; }
   }
 
-  updateFeedbackStatus(id, status, response = null) {
-    const data = this.getData();
-    if (data.feedback) {
-      const feedback = data.feedback.find(f => f.id === id);
-      if (feedback) {
-        feedback.status = status;
-        if (response) feedback.response = response;
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
-    }
+  async updatePost(id, updates) {
+    try {
+      const { data, error } = await supabaseClient.from('posts')
+        .update(sanitizeObjectStrings(updates)).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    } catch (e) { console.error('updatePost:', e); return null; }
   }
 
-  deleteFeedback(id) {
-    const data = this.getData();
-    if (data.feedback) {
-      data.feedback = data.feedback.filter(f => f.id !== id);
-      this._cache = null;
-      localStorage.setItem('appData', JSON.stringify(data));
-    }
+  async deleteBooking(id) {
+    try {
+      const { error } = await supabaseClient.from('bookings').delete().eq('id', id);
+      if (error) throw error;
+      return { success: true };
+    } catch (e) { console.error('deleteBooking:', e); return { success: false }; }
   }
 
-  // User Management CRUD
-  getUsers() {
-    const data = this.getData();
-    return data.users || [];
+  async updateBooking(id, updates) {
+    try {
+      const { data, error } = await supabaseClient.from('bookings')
+        .update(sanitizeObjectStrings(updates)).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    } catch (e) { console.error('updateBooking:', e); return null; }
   }
 
-  getStudents() {
-    const data = this.getData();
-    return (data.users || []).filter(u => u.role === 'student');
+  async deleteUser(id) {
+    try {
+      const { error } = await supabaseClient.from('profiles').delete().eq('id', id);
+      if (error) throw error;
+      return { success: true };
+    } catch (e) { console.error('deleteUser:', e); return { success: false }; }
   }
 
-  updateUser(id, updates) {
-    const data = this.getData();
-    if (data.users) {
-      const user = data.users.find(u => u.id === id);
-      if (user) {
-        Object.assign(user, updates);
-        this._cache = null;
-        localStorage.setItem('appData', JSON.stringify(data));
-      }
-    }
+  async addUser(user) {
+    try {
+      const { data, error } = await supabaseClient.from('profiles')
+        .insert(sanitizeObjectStrings(user)).select().single();
+      if (error) throw error;
+      return data;
+    } catch (e) { console.error('addUser:', e); return null; }
   }
 
-  deleteUser(id) {
-    const data = this.getData();
-    if (data.users) {
-      data.users = data.users.filter(u => u.id !== id);
-      this._cache = null;
-      localStorage.setItem('appData', JSON.stringify(data));
-    }
+
+  async getStudentById(id) {
+    try {
+      const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', id).eq('role', 'student').maybeSingle();
+      if (error) throw error;
+      return data;
+    } catch (e) { console.error('getStudentById:', e); return null; }
   }
 
-  addUser(user) {
-    const data = this.getData();
-    if (!data.users) data.users = [];
-    data.users.push({ ...user, id: 'user' + Date.now() });
-    this._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
+  async updateFeedbackStatus(id, status, response = null) {
+    try {
+      const updates = { status };
+      if (response) updates.response = response;
+      const { data, error } = await supabaseClient.from('feedback')
+        .update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    } catch (e) { console.error('updateFeedbackStatus:', e); return null; }
+  }
+
+  async deleteFeedback(id) {
+    try {
+      const { error } = await supabaseClient.from('feedback').delete().eq('id', id);
+      if (error) throw error;
+      return { success: true };
+    } catch (e) { console.error('deleteFeedback:', e); return { success: false }; }
+  }
+
+  async getExperiences() {
+    try {
+      const { data, error } = await supabaseClient.from('experiences')
+        .select('*, user:profiles!experiences_user_id_fkey(name)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    } catch (e) { console.error('getExperiences:', e); return []; }
   }
 }
 
-const appData = new AppData();
+
+let appData = null;
+
+function initializeApp() {
+  if (!supabaseClient) {
+    console.error('[App] Cannot initialize app - Supabase client not ready');
+    return false;
+  }
+  if (!appData) {
+    appData = new SupabaseDataLayer();
+    console.log('[App] SupabaseDataLayer initialized');
+  }
+  return true;
+}
+
+// Initialize app when Supabase client is ready
+if (supabaseClient) {
+  initializeApp();
+} else {
+  window.addEventListener('load', () => {
+    if (!appData) {
+      setTimeout(() => {
+        if (supabaseClient && !appData) {
+          initializeApp();
+        }
+      }, 100);
+    }
+  });
+}
+
+
+// ============================================================================
+// CLOUDINARY UPLOAD UTILITY
+// ============================================================================
+const CLOUDINARY_CLOUD_NAME = 'djhrlkjzw';
+const CLOUDINARY_UPLOAD_PRESET = 'mwj3qjc6';
+
+async function uploadToCloudinary(file, folder = 'aroosh') {
+  if (!file) return null;
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  formData.append('folder', folder);
+
+  try {
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
+      { method: 'POST', body: formData }
+    );
+    if (!res.ok) throw new Error('Cloudinary upload failed: ' + res.status);
+    const data = await res.json();
+    return data.secure_url;
+  } catch (err) {
+    console.error('[Cloudinary] Upload error:', err);
+    UI.showAlert('File upload failed. Please try again.', 'error');
+    return null;
+  }
+}
 
 // ============================================================================
 // 2. ROUTER
@@ -866,11 +1015,16 @@ class Router {
     this.routes[path] = handler;
   }
 
-  navigate(path) {
-    window.location.hash = path;
+  async navigate(path) {
+    const targetHash = '#' + path;
+    if (window.location.hash === targetHash) {
+      await this.handleRouteChange();
+    } else {
+      window.location.hash = path;
+    }
   }
 
-  handleRouteChange() {
+  async handleRouteChange() {
     const hash = window.location.hash.slice(1) || '/';
     // Handle query strings gracefully
     const pathOnly = hash.split('?')[0];
@@ -902,17 +1056,24 @@ class Router {
     if (handler) {
       this.currentPage = matchPath;
       window.scrollTo(0, 0); // Quick UX Win: Scroll to top on every route change
-      handler(hash);
+      try {
+        await handler(hash);
+      } catch (err) {
+        console.error('[Router] Error in route handler:', err);
+      }
       if (typeof renderSidebar === 'function') {
         renderSidebar();
+      }
+      if (typeof injectFooter === 'function') {
+        injectFooter();
       }
     } else {
       this.navigate('/');
     }
   }
 
-  start() {
-    this.handleRouteChange();
+  async start() {
+    await this.handleRouteChange();
   }
 }
 
@@ -1110,10 +1271,47 @@ function initHeroParticles() {
   return cleanup;
 }
 
+// AUTH / ROLE GUARDS
+function requireRole(allowedRoles) {
+  const user = appData.getCurrentUser();
+  const role = normalizeRole(user?.role);
+  if (!allowedRoles.includes(role)) {
+    if (role === 'guest') {
+      UI.showAlert('Please sign in to access this page.', 'warning');
+      router.navigate('/');
+    } else if (role === 'student') {
+      UI.showAlert('Access denied. Redirecting to your dashboard.', 'warning');
+      router.navigate('/student-dashboard');
+    } else if (role === 'tutor') {
+      UI.showAlert('Access denied. Redirecting to your dashboard.', 'warning');
+      router.navigate('/tutor-dashboard');
+    } else {
+      router.navigate('/');
+    }
+    return false;
+  }
+  return true;
+}
+
 // PAGE 1: HOME
-function renderHome() {
-  const announcements = appData.getAnnouncements();
-  const posts = appData.getPosts();
+async function renderHome() {
+  if (!appData) {
+    console.error('[Home] appData not initialized');
+    return;
+  }
+  let user, announcements, posts, experiences;
+  try {
+    user = appData.getCurrentUser();
+    announcements = await appData.getAnnouncements() || [];
+    posts = await appData.getPosts() || [];
+    const allExperiences = await appData.getExperiences() || [];
+    experiences = allExperiences.filter(e => e.status === 'approved');
+  } catch(dataErr) {
+    console.error('[Home] Data fetch error:', dataErr);
+    user = appData.getCurrentUser();
+    announcements = []; posts = []; experiences = [];
+  }
+  const isGuest = !user;
 
   const html = `
     <div class="hero" style="position: relative; overflow: hidden;">
@@ -1124,25 +1322,25 @@ function renderHome() {
         <div class="hero-shape hero-shape-3"></div>
       </div>
       <div class="container" style="position: relative; z-index: 1;">
-        <div class="hero-content" style="position: relative; z-index: 1;">
-          <h1>Expert Online Tutoring for Every Subject</h1>
-          <p>Connect with qualified tutors, learn at your own pace, and achieve your learning goals</p>
+        <div class="hero-content" style="position: relative; z-index: 1; ">
+          <h1 style="">Expert Online Tutoring for Every Subject</h1>
+          <p style="">Connect with qualified tutors, learn at your own pace, and achieve your learning goals</p>
           <div class="hero-cta">
-            <button class="btn btn-secondary" onclick="router.navigate('/tutors')">Find Tutors</button>
-            <button class="btn btn-outline" onclick="router.navigate('/role-selection')">Sign Up Free</button>
+            <button class="btn btn-secondary" onclick="router.navigate('/tutors')" style="">Find Tutors</button>
+            <button class="btn btn-outline" onclick="router.navigate('/role-selection')" style="">Sign Up Free</button>
           </div>
-          <div class="hero-stats">
+          <div class="hero-stats" style="">
             <div class="stat-card">
-              <div class="stat-number" id="statTutors">0+</div>
-              <div class="stat-label">Expert Tutors</div>
+              <div class="stat-number" id="statTutors" style="">0+</div>
+              <div class="stat-label" style="font-family: 'Inter', sans-serif; font-weight: 500;">Expert Tutors</div>
             </div>
             <div class="stat-card">
-              <div class="stat-number" id="statStudents">0K+</div>
-              <div class="stat-label">Active Students</div>
+              <div class="stat-number" id="statStudents" style="">0K+</div>
+              <div class="stat-label" style="font-family: 'Inter', sans-serif; font-weight: 500;">Active Students</div>
             </div>
             <div class="stat-card">
-              <div class="stat-number" id="statSubjects">0+</div>
-              <div class="stat-label">Subjects</div>
+              <div class="stat-number" id="statSubjects" style="">0+</div>
+              <div class="stat-label" style="font-family: 'Inter', sans-serif; font-weight: 500;">Subjects</div>
             </div>
           </div>
         </div>
@@ -1150,73 +1348,73 @@ function renderHome() {
     </div>
 
     <!-- Announcements Section -->
-    ${announcements.length > 0 ? `
     <section style="padding: 2rem 0; background: var(--color-surface); border-bottom: 1px solid var(--color-muted);">
       <div class="container">
         <h2 class="section-title text-center" style="margin-bottom: 1.5rem;">📢 Announcements</h2>
+        ${announcements.length > 0 ? `
         <div style="display: grid; gap: 1rem;">
-          ${announcements.slice(0, 3).map(ann => `
+          ${announcements.slice(0, 5).map(ann => `
             <div class="card" style="padding: 1.5rem; border-left: 4px solid ${ann.priority === 'high' ? 'var(--color-danger)' : ann.priority === 'medium' ? 'var(--color-warning)' : 'var(--color-success)'};">
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
                 <h3 style="margin: 0; font-size: 1.1rem;">${sanitize(ann.title)}</h3>
-                <span class="badge badge-${ann.priority === 'high' ? 'danger' : ann.priority === 'medium' ? 'warning' : 'success'}" style="font-size: 0.75rem;">${ann.priority}</span>
+                <span class="badge badge-${ann.priority === 'high' ? 'danger' : ann.priority === 'medium' ? 'warning' : 'success'}" style="font-size: 0.75rem;">${ann.priority || 'normal'}</span>
               </div>
               <p class="text-muted" style="margin: 0; font-size: 0.95rem;">${sanitize(ann.content)}</p>
-              <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-text-secondary);">${new Date(ann.createdAt).toLocaleDateString()}</div>
+              <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-text-secondary);">${new Date(ann.created_at || ann.createdAt).toLocaleDateString()}</div>
             </div>
           `).join('')}
         </div>
+        ` : `<p class="text-center text-muted" style="padding: 2rem 0;">No announcements yet. Check back later!</p>`}
       </div>
     </section>
-    ` : ''}
 
     <!-- Posts Section -->
-    ${posts.length > 0 ? `
     <section style="padding: 3rem 0; border-bottom: 1px solid var(--color-muted);">
       <div class="container">
         <h2 class="section-title text-center" style="margin-bottom: 2rem;">📝 Latest Posts</h2>
+        ${posts.length > 0 ? `
         <div class="grid-3">
-          ${posts.slice(0, 3).map(post => `
+          ${posts.slice(0, 6).map(post => `
             <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column;">
-              <span class="badge badge-secondary" style="align-self: flex-start; margin-bottom: 0.75rem; font-size: 0.8rem;">${sanitize(post.category)}</span>
+              <span class="badge badge-secondary" style="align-self: flex-start; margin-bottom: 0.75rem; font-size: 0.8rem;">${sanitize(post.category || 'General')}</span>
               <h3 style="margin: 0 0 0.75rem 0; font-size: 1.1rem;">${sanitize(post.title)}</h3>
-              <p class="text-muted" style="margin: 0 0 1rem 0; font-size: 0.9rem; flex-grow: 1;">${sanitize(post.content.substring(0, 100))}...</p>
-              <div style="font-size: 0.85rem; color: var(--color-text-secondary);">${new Date(post.createdAt).toLocaleDateString()}</div>
+              <p class="text-muted" style="margin: 0 0 1rem 0; font-size: 0.9rem; flex-grow: 1;">${sanitize((post.content || '').substring(0, 100))}${post.content && post.content.length > 100 ? '...' : ''}</p>
+              <div style="font-size: 0.85rem; color: var(--color-text-secondary);">${new Date(post.created_at || post.createdAt).toLocaleDateString()}</div>
             </div>
           `).join('')}
         </div>
+        ` : `<p class="text-center text-muted" style="padding: 2rem 0;">No posts yet. Check back later!</p>`}
       </div>
     </section>
-    ` : ''}
 
     <!-- Category Subjects Grid Section -->
     <section class="subjects" style="padding: 3rem 0; border-bottom: 1px solid var(--color-muted);">
       <div class="container">
-        <h2 class="section-title text-center" style="margin-bottom: 2rem;">Explore Subjects</h2>
+        <h2 class="section-title text-center" style="margin-bottom: 2rem; ">Explore Subjects</h2>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.5rem;">
           <div class="subject-card text-center" onclick="router.navigate('/tutors?subject=Math')" style="cursor: pointer; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-muted); border-radius: var(--radius-lg);">
             <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">📐</div>
-            <h4 style="margin: 0; font-size: 1.1rem;">Math</h4>
+            <h4 style="margin: 0; font-size: 1.1rem; ">Math</h4>
           </div>
           <div class="subject-card text-center" onclick="router.navigate('/tutors?subject=Science')" style="cursor: pointer; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-muted); border-radius: var(--radius-lg);">
             <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">🔬</div>
-            <h4 style="margin: 0; font-size: 1.1rem;">Science</h4>
+            <h4 style="margin: 0; font-size: 1.1rem; ">Science</h4>
           </div>
           <div class="subject-card text-center" onclick="router.navigate('/tutors?subject=English')" style="cursor: pointer; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-muted); border-radius: var(--radius-lg);">
             <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">📚</div>
-            <h4 style="margin: 0; font-size: 1.1rem;">English</h4>
+            <h4 style="margin: 0; font-size: 1.1rem; ">English</h4>
           </div>
           <div class="subject-card text-center" onclick="router.navigate('/tutors?subject=Languages')" style="cursor: pointer; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-muted); border-radius: var(--radius-lg);">
             <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">🗣️</div>
-            <h4 style="margin: 0; font-size: 1.1rem;">Languages</h4>
+            <h4 style="margin: 0; font-size: 1.1rem; ">Languages</h4>
           </div>
           <div class="subject-card text-center" onclick="router.navigate('/tutors?subject=Technology')" style="cursor: pointer; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-muted); border-radius: var(--radius-lg);">
             <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">💻</div>
-            <h4 style="margin: 0; font-size: 1.1rem;">Technology</h4>
+            <h4 style="margin: 0; font-size: 1.1rem; ">Technology</h4>
           </div>
           <div class="subject-card text-center" onclick="router.navigate('/tutors?subject=Arts')" style="cursor: pointer; padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-muted); border-radius: var(--radius-lg);">
             <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">🎨</div>
-            <h4 style="margin: 0; font-size: 1.1rem;">Arts</h4>
+            <h4 style="margin: 0; font-size: 1.1rem; ">Arts</h4>
           </div>
         </div>
       </div>
@@ -1225,22 +1423,22 @@ function renderHome() {
     <!-- How It Works Section -->
     <section class="how-it-works bg-surface" style="padding: 4rem 0; border-bottom: 1px solid var(--color-muted);">
       <div class="container">
-        <h2 class="section-title text-center" style="margin-bottom: 3rem;">How It Works</h2>
+        <h2 class="section-title text-center" style="margin-bottom: 3rem; ">How It Works</h2>
         <div class="grid-3">
           <div class="step-card text-center" style="padding: 2rem; background: var(--color-background); border-radius: var(--radius-xl); border: 1px solid var(--color-muted);">
             <div style="font-size: 3rem; margin-bottom: 1rem;">🔍</div>
-            <h3 style="margin-bottom: 0.5rem; font-size: 1.25rem;">1. Search Tutors</h3>
-            <p class="text-muted" style="font-size: 0.95rem; margin-bottom: 0;">Browse expert educators and pre-filter by specific categories, price, or rating.</p>
+            <h3 style="margin-bottom: 0.5rem; font-size: 1.25rem; ">1. Search Tutors</h3>
+            <p class="text-muted" style="font-size: 0.95rem; margin-bottom: 0;">Browse expert educators and pre-filter by specific categories or rating.</p>
           </div>
           <div class="step-card text-center" style="padding: 2rem; background: var(--color-background); border-radius: var(--radius-xl); border: 1px solid var(--color-muted);">
             <div style="font-size: 3rem; margin-bottom: 1rem;">📅</div>
-            <h3 style="margin-bottom: 0.5rem; font-size: 1.25rem;">2. Book a Session</h3>
+            <h3 style="margin-bottom: 0.5rem; font-size: 1.25rem; ">2. Book a Session</h3>
             <p class="text-muted" style="font-size: 0.95rem; margin-bottom: 0;">Schedule instantly using our brand-new 3-step checkout stepper forms.</p>
           </div>
           <div class="step-card text-center" style="padding: 2rem; background: var(--color-background); border-radius: var(--radius-xl); border: 1px solid var(--color-muted);">
             <div style="font-size: 3rem; margin-bottom: 1rem;">🎓</div>
-            <h3 style="margin-bottom: 0.5rem; font-size: 1.25rem;">3. Learn & Grow</h3>
-            <p class="text-muted" style="font-size: 0.95rem; margin-bottom: 0;">Participate in video calls, submit homework, and complete leaderboard challenges.</p>
+            <h3 style="margin-bottom: 0.5rem; font-size: 1.25rem; ">3. Learn & Grow</h3>
+            <p class="text-muted" style="font-size: 0.95rem; margin-bottom: 0;">Submit homework, participate in discussions, and complete leaderboard challenges.</p>
           </div>
         </div>
       </div>
@@ -1249,7 +1447,7 @@ function renderHome() {
     <!-- Student Testimonials Section -->
     <section class="testimonials" style="padding: 4rem 0;">
       <div class="container">
-        <h2 class="section-title text-center" style="margin-bottom: 3rem;">What Our Students Say</h2>
+        <h2 class="section-title text-center" style="margin-bottom: 3rem; ">What Our Students Say</h2>
         <div class="grid-3">
           <div class="card testimonial-card" style="padding: 2rem; border-top: 4px solid var(--color-primary); display: flex; flex-direction: column; justify-content: space-between;">
             <div>
@@ -1280,7 +1478,7 @@ function renderHome() {
           <div class="card testimonial-card" style="padding: 2rem; border-top: 4px solid var(--color-primary); display: flex; flex-direction: column; justify-content: space-between;">
             <div>
               <div class="stars" style="color: #fbbf24; margin-bottom: 1rem; font-size: 1.25rem;">★★★★★</div>
-              <p style="font-style: italic; margin-bottom: 1.5rem; color: var(--color-text-secondary); line-height: 1.6;">"I love the XP system, the leaderboard, and the interactive AI chatbot. It makes learning feel like a fun game!"</p>
+              <p style="font-style: italic; margin-bottom: 1.5rem; color: var(--color-text-secondary); line-height: 1.6;">"I love the XP system, the leaderboard, and the interactive features. It makes learning feel like a fun game!"</p>
             </div>
             <div style="display: flex; align-items: center; gap: 1rem;">
               <div style="font-size: 2rem;">👤</div>
@@ -1294,16 +1492,54 @@ function renderHome() {
       </div>
     </section>
 
+    <!-- User Experiences Section -->
+    <section class="experiences" style="padding: 4rem 0; border-top: 1px solid var(--color-muted); background: var(--color-surface);">
+      <div class="container">
+        <h2 class="section-title text-center" style="margin-bottom: 3rem; ">💬 User Experiences</h2>
+        ${experiences.length > 0 ? `
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
+          ${experiences.slice(0, 6).map(exp => `
+            <div class="card" style="display: flex; flex-direction: column; transition: var(--transition-base);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div>
+                  <h4 style="margin: 0; font-size: 1.1rem;">${sanitize(exp.name)}</h4>
+                  <p class="text-muted" style="margin: 0.25rem 0 0 0; font-size: 0.85rem;">${sanitize(exp.subject)}</p>
+                </div>
+                <div class="stars" style="color: #fbbf24; font-size: 1rem;">${'★'.repeat(exp.rating || 5)}</div>
+              </div>
+              <p style="font-style: italic; color: var(--color-text-secondary); line-height: 1.6; flex-grow: 1;">"${sanitize(exp.experience)}"</p>
+              <div style="margin-top: 1rem; font-size: 0.85rem; color: var(--color-text-secondary);">
+                ${new Date(exp.created_at || exp.createdAt).toLocaleDateString()}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <div style="text-align: center; margin-top: 2rem;">
+          <button class="btn btn-outline" onclick="router.navigate('/experiences')">View All Experiences</button>
+        </div>
+        ` : `
+        <div class="card text-center" style="padding: 3rem;">
+          <p class="text-secondary" style="font-size: 1.1rem;">No experiences yet. Be the first to share your story!</p>
+          <button class="btn btn-primary mt-lg" onclick="router.navigate('/experiences')">Share Your Experience</button>
+        </div>
+        `}
+      </div>
+    </section>
+
     <!-- Call to Action -->
+    ${isGuest ? `
     <section class="bg-light" style="padding: 3rem 0; border-top: 1px solid var(--color-muted);">
       <div class="container">
         <div class="card" style="text-align: center; padding: 3rem;">
-          <h2>Ready to Start Learning?</h2>
-          <p class="text-muted" style="margin-bottom: 1.5rem;">Join thousands of active students improving their school performance today</p>
-          <button class="btn btn-primary btn-lg" onclick="router.navigate('/role-selection')">Get Started Now</button>
+          <h2 style="">Ready to Start?</h2>
+          <p class="text-muted" style="margin-bottom: 1.5rem; ">Join thousands of students and tutors on Aroosh</p>
+          <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+            <button class="btn btn-primary btn-lg" onclick="window.location.href='login.html'" style="">Get Started</button>
+          </div>
         </div>
       </div>
     </section>
+    ` : ''}
   `;
   UI.setContent(html);
 
@@ -1315,6 +1551,13 @@ function renderHome() {
     }
   }, 0);
 
+  // Scroll reveal + parallax + counters
+  requestAnimationFrame(() => {
+    initScrollReveal();
+    initHeroParallax();
+    initCounterAnimations();
+  });
+
   // Stats Count-up Trigger
   setTimeout(() => {
     UI.animateCountUp(document.getElementById('statTutors'), 500, '+');
@@ -1325,6 +1568,10 @@ function renderHome() {
 
 // PAGE 2: ROLE SELECTION
 function renderRoleSelection() {
+  if (!appData) {
+    console.error('[RoleSelection] appData not initialized');
+    return;
+  }
   const html = `
     <div class="container" style="padding: 3rem 0;">
       <h1 class="text-center mb-lg">Choose Your Role</h1>
@@ -1342,7 +1589,7 @@ function renderRoleSelection() {
             <li>View tutor profiles and reviews</li>
             <li>Track assignments and progress</li>
           </ul>
-          <button class="btn btn-primary btn-lg" onclick="router.navigate('/signup/student')">Sign Up as Student</button>
+          <button class="btn btn-primary btn-lg" onclick="window.location.href='signup-student.html'">Get Started as Student</button>
         </div>
 
         <div class="role-card">
@@ -1350,11 +1597,10 @@ function renderRoleSelection() {
           <h2>I'm a Tutor</h2>
           <ul class="role-benefits">
             <li>Connect with students worldwide</li>
-            <li>Set your own hourly rate</li>
             <li>Flexible teaching schedule</li>
             <li>Build your tutoring business</li>
           </ul>
-          <button class="btn btn-primary btn-lg" onclick="router.navigate('/signup/tutor')">Sign Up as Tutor</button>
+          <button class="btn btn-primary btn-lg" onclick="window.location.href='signup-tutor.html'">Get Started as Tutor</button>
         </div>
       </div>
     </div>
@@ -1364,6 +1610,10 @@ function renderRoleSelection() {
 
 // PAGE 3: STUDENT SIGN UP
 function renderStudentSignUp() {
+  if (!appData) {
+    console.error('[StudentSignUp] appData not initialized');
+    return;
+  }
   const html = `
     <div class="container-sm" style="padding: 2rem var(--spacing-md); max-width: 580px;">
       <h1 class="text-center mb-lg">Create Student Account</h1>
@@ -1381,6 +1631,14 @@ function renderStudentSignUp() {
           </div>
 
           <div class="form-group">
+            <label class="form-label">Profile Picture <span class="text-muted" style="font-size: 0.85rem;">(optional)</span></label>
+            <input type="file" id="studentProfilePic" class="form-input" accept="image/*" style="padding: 0.5rem;">
+            <div id="studentPicPreview" style="margin-top: 0.5rem; display: none;">
+              <img src="" alt="Preview" style="width: 80px; height: 80px; object-fit: cover; border-radius: 50%; border: 2px solid var(--color-muted);">
+            </div>
+          </div>
+
+          <div class="form-group">
             <label class="form-label">Grade Level</label>
             <select class="form-select" required>
               <option value="">Select grade level</option>
@@ -1389,6 +1647,13 @@ function renderStudentSignUp() {
               <option value="High School">High School</option>
               <option value="College">College</option>
               <option value="Adult">Adult Learner</option>
+              <option value="">--- International Standards ---</option>
+              <option value="IB MYP">IB Middle Years Programme (MYP)</option>
+              <option value="IB DP">IB Diploma Programme (DP)</option>
+              <option value="IGCSE">IGCSE (International GCSEs)</option>
+              <option value="A-Levels">A-Levels / AS-Levels</option>
+              <option value="AP">AP (Advanced Placement)</option>
+              <option value="International Baccalaureate">International Baccalaureate</option>
             </select>
           </div>
 
@@ -1436,14 +1701,15 @@ function renderStudentSignUp() {
   `;
   UI.setContent(html);
 
-  document.getElementById('studentSignupForm').addEventListener('submit', (e) => {
+  document.getElementById('studentSignupForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
     const name = form.querySelector('input[type="text"]').value.trim();
     const email = form.querySelector('input[type="email"]').value.trim();
     const gradeLevel = form.querySelector('select').value;
     const interests = Array.from(form.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
-    
+    const picInput = document.getElementById('studentProfilePic');
+
     if (!name || !email || !gradeLevel) {
       UI.showAlert('Please fill in all required fields.', 'warning');
       return;
@@ -1457,6 +1723,15 @@ function renderStudentSignUp() {
       return;
     }
 
+    let avatar = '👤';
+    if (picInput.files && picInput.files[0]) {
+      avatar = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target.result);
+        reader.readAsDataURL(picInput.files[0]);
+      });
+    }
+
     const newStudent = {
       id: 'user' + Date.now(),
       name,
@@ -1464,7 +1739,7 @@ function renderStudentSignUp() {
       role: 'student',
       gradeLevel,
       interests,
-      avatar: '👤'
+      avatar
     };
 
     data.users.push(newStudent);
@@ -1477,17 +1752,33 @@ function renderStudentSignUp() {
     UI.showAlert('Account created! Welcome to Aroosh\'s Tutors!', 'success');
     setTimeout(() => router.navigate('/student-dashboard'), 1000);
   });
+
+  // Profile picture preview
+  document.getElementById('studentProfilePic')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    const preview = document.getElementById('studentPicPreview');
+    const img = preview?.querySelector('img');
+    if (file && img) {
+      const reader = new FileReader();
+      reader.onload = (ev) => { img.src = ev.target.result; preview.style.display = 'block'; };
+      reader.readAsDataURL(file);
+    }
+  });
 }
 
 // PAGE 4: TUTOR SIGN UP
 function renderTutorSignUp() {
+  if (!appData) {
+    console.error('[TutorSignUp] appData not initialized');
+    return;
+  }
   const html = `
     <div class="container-sm" style="padding: 2rem var(--spacing-md); max-width: 580px;">
       <h1 class="text-center mb-lg">Become a Tutor</h1>
 
-      <div class="card mb-lg" style="border-left: 4px solid var(--color-warning);">
+      <div class="card mb-lg" style="border-left: 4px solid var(--color-info, var(--color-secondary));">
         <div style="padding: 0.5rem 0;">
-          <p style="margin: 0; font-size: 0.95rem;"><strong>Instant Application Approval:</strong> Your registration will be approved immediately for ease of demonstration.</p>
+          <p style="margin: 0; font-size: 0.95rem;"><strong>Note:</strong> Your tutor application will be reviewed by the admin. You will be notified once approved.</p>
         </div>
       </div>
 
@@ -1501,6 +1792,14 @@ function renderTutorSignUp() {
           <div class="form-group">
             <label class="form-label">Email</label>
             <input type="email" class="form-input" placeholder="your@email.com" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Profile Picture <span class="text-muted" style="font-size: 0.85rem;">(optional)</span></label>
+            <input type="file" id="tutorProfilePic" class="form-input" accept="image/*" style="padding: 0.5rem;">
+            <div id="tutorPicPreview" style="margin-top: 0.5rem; display: none;">
+              <img src="" alt="Preview" style="width: 80px; height: 80px; object-fit: cover; border-radius: 50%; border: 2px solid var(--color-muted);">
+            </div>
           </div>
 
           <div class="form-group">
@@ -1523,11 +1822,6 @@ function renderTutorSignUp() {
           <div class="form-group">
             <label class="form-label">Qualifications</label>
             <input type="text" class="form-input" placeholder="e.g., B.Sc Mathematics, M.Ed" required>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Hourly Rate ($)</label>
-            <input type="number" class="form-input" placeholder="25" min="10" max="200" required>
           </div>
 
           <div class="form-group">
@@ -1583,7 +1877,7 @@ function renderTutorSignUp() {
   `;
   UI.setContent(html);
 
-  document.getElementById('tutorSignupForm').addEventListener('submit', (e) => {
+  document.getElementById('tutorSignupForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
     const name = form.querySelector('input[placeholder="Your full name"]').value.trim();
@@ -1591,107 +1885,100 @@ function renderTutorSignUp() {
     const bio = form.querySelector('textarea').value.trim();
     const experience = form.querySelector('select').value;
     const qualifications = form.querySelector('input[placeholder="e.g., B.Sc Mathematics, M.Ed"]').value.trim();
-    const hourlyRate = parseInt(form.querySelector('input[type="number"]').value);
     const subjects = Array.from(form.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
 
-    if (!name || !email || !bio || !experience || !qualifications || !hourlyRate) {
+    if (!name || !email || !bio || !experience || !qualifications) {
       UI.showAlert('Please fill in all required fields.', 'warning');
       return;
     }
 
-    const data = appData.getData();
-    if (!data.users) data.users = [];
-    const exists = data.users.some(u => u.email.toLowerCase() === email.toLowerCase());
-    if (exists) {
-      UI.showAlert('Email is already registered!', 'warning');
+    if (subjects.length === 0) {
+      UI.showAlert('Please select at least one subject.', 'warning');
       return;
     }
 
-    const newTutor = {
-      id: 'tutor' + Date.now(),
+    const application = {
       name,
       email,
-      role: 'tutor',
-      bio,
-      experience,
       qualifications,
-      hourlyRate,
+      experience,
       subjects,
-      avatar: '👨‍🏫',
-      rating: 5.0,
-      totalReviews: 0,
-      isAvailable: true,
-      yearsOfExperience: parseInt(experience) || 3,
-      experienceLevel: 'Expert',
-      availability: []
+      status: 'pending'
     };
 
-    data.users.push(newTutor);
+    const result = await appData.addTutorApplication(application);
+    if (result) {
+      UI.showAlert('Application submitted! You will be notified once the admin reviews and approves your application.', 'success');
+      setTimeout(() => router.navigate('/'), 2000);
+    } else {
+      UI.showAlert('Failed to submit application. Please try again.', 'danger');
+    }
+  });
 
-    if (!data.tutorApplications) data.tutorApplications = [];
-    data.tutorApplications.push({
-      id: 'app' + Date.now(),
-      name,
-      email,
-      bio,
-      experience,
-      qualifications,
-      hourlyRate,
-      subjects,
-      status: 'approved',
-      appliedDate: new Date().toISOString().split('T')[0]
-    });
-
-    appData._cache = null;
-    localStorage.setItem('appData', JSON.stringify(data));
-
-    appData.setCurrentUser(newTutor);
-    renderSidebar();
-
-    UI.showAlert('Account created! Welcome to Aroosh\'s Tutors!', 'success');
-    setTimeout(() => router.navigate('/tutor-dashboard'), 1000);
+  // Profile picture preview
+  document.getElementById('tutorProfilePic')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    const preview = document.getElementById('tutorPicPreview');
+    const img = preview?.querySelector('img');
+    if (file && img) {
+      const reader = new FileReader();
+      reader.onload = (ev) => { img.src = ev.target.result; preview.style.display = 'block'; };
+      reader.readAsDataURL(file);
+    }
   });
 }
 
 // PAGE 5: FIND TUTORS
 // [DECLARED GLOBALLY SO SKELETON HANDLER WORKS PERFECTLY]
-function renderFindTutors() {
-  const tutors = appData.getTutors();
-  
-  // Quick UX: Pre-selected subject parser
-  const hash = window.location.hash;
-  let preselectedSubject = '';
-  if (hash.includes('?subject=')) {
-    preselectedSubject = decodeURIComponent(hash.split('?subject=')[1]);
+async function renderFindTutors() {
+  if (!appData) {
+    console.error('[FindTutors] appData not initialized');
+    return;
   }
 
-  // 600ms Skeleton Loader
-  const skeletonHtml = `
-    <div class="container" style="padding: 2rem 0;">
-      <h1 class="mb-lg">Find Your Perfect Tutor</h1>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
-        <div class="skeleton" style="height: 40px; border-radius: var(--radius-md);"></div>
-        <div class="skeleton" style="height: 40px; border-radius: var(--radius-md);"></div>
-        <div class="skeleton" style="height: 40px; border-radius: var(--radius-md);"></div>
-      </div>
-      <div class="grid-3">
-        ${[1, 2, 3, 4, 5, 6].map(() => `
-          <div class="card skeleton-card" style="min-height: 350px;">
-            <div class="skeleton" style="width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 1.5rem;"></div>
-            <div class="skeleton" style="width: 60%; height: 20px; margin: 0 auto 1rem;"></div>
-            <div class="skeleton" style="width: 90%; height: 15px; margin: 0 auto 1rem;"></div>
-            <div class="skeleton" style="width: 40%; height: 15px; margin: 0 auto 1.5rem;"></div>
-            <div class="skeleton" style="width: 100%; height: 40px; border-radius: var(--radius-md);"></div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-  
-  UI.setContent(skeletonHtml);
+  try {
+    // Quick UX: Pre-selected subject parser
+    const hash = window.location.hash;
+    let preselectedSubject = '';
+    if (hash.includes('?subject=')) {
+      preselectedSubject = decodeURIComponent(hash.split('?subject=')[1]);
+    }
 
-  setTimeout(() => {
-    // Check if the user navigated away within 600ms
+    // Show loading state immediately
+    const skeletonHtml = `
+      <div class="container" style="padding: 2rem 0;">
+        <h1 class="mb-lg">Find Your Perfect Tutor</h1>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+          <div class="skeleton" style="height: 40px; border-radius: var(--radius-md);"></div>
+          <div class="skeleton" style="height: 40px; border-radius: var(--radius-md);"></div>
+          <div class="skeleton" style="height: 40px; border-radius: var(--radius-md);"></div>
+        </div>
+        <div class="grid-3">
+          ${[1, 2, 3, 4, 5, 6].map(() => `
+            <div class="card skeleton-card" style="min-height: 350px;">
+              <div class="skeleton" style="width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 1.5rem;"></div>
+              <div class="skeleton" style="width: 60%; height: 20px; margin: 0 auto 1rem;"></div>
+              <div class="skeleton" style="width: 90%; height: 15px; margin: 0 auto 1rem;"></div>
+              <div class="skeleton" style="width: 40%; height: 15px; margin: 0 auto 1.5rem;"></div>
+              <div class="skeleton" style="width: 100%; height: 40px; border-radius: var(--radius-md);"></div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+    
+    UI.setContent(skeletonHtml);
+
+    // Fetch tutors
+    let tutors = [];
+    try {
+      tutors = await appData.getTutors() || [];
+    } catch (err) {
+      console.error('[FindTutors] Error fetching tutors:', err);
+      tutors = [];
+    }
+
+    // Check if user navigated away
     const currentHash = window.location.hash || '#/';
     if (!currentHash.includes('/tutors')) return;
 
@@ -1722,8 +2009,13 @@ function renderFindTutors() {
             <select id="sortBy" class="form-select">
               <option value="">Sort By</option>
               <option value="rating">Highest Rating</option>
-              <option value="price">Lowest Price</option>
             </select>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <button id="searchBtn" class="btn btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+              <span>🔍</span>
+              <span>Search</span>
+            </button>
           </div>
         </div>
 
@@ -1743,15 +2035,13 @@ function renderFindTutors() {
     const updateDisplay = () => {
       let filtered = [...tutors];
       if (filters.search) {
-        filtered = filtered.filter(t => t.name.toLowerCase().includes(filters.search.toLowerCase()));
+        filtered = filtered.filter(t => t.name?.toLowerCase().includes(filters.search.toLowerCase()));
       }
       if (filters.subject) {
-        filtered = filtered.filter(t => t.subjects.includes(filters.subject));
+        filtered = filtered.filter(t => t.subjects?.includes(filters.subject));
       }
       if (filters.sort === 'rating') {
-        filtered.sort((a, b) => b.rating - a.rating);
-      } else if (filters.sort === 'price') {
-        filtered.sort((a, b) => a.hourlyRate - b.hourlyRate);
+        filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
       }
 
       const grid = document.getElementById('tutorsGrid');
@@ -1771,17 +2061,17 @@ function renderFindTutors() {
 
       grid.style.display = 'grid';
       grid.innerHTML = filtered.map(tutor => {
-        const availBadge = tutor.isAvailable 
+        const availBadge = (tutor.is_available ?? tutor.isAvailable ?? true) 
           ? `<span class="badge badge-success" style="font-size: 11px; padding: 4px 8px; margin-bottom: 0.5rem; display: inline-block;">● Available Today</span>`
           : `<span class="badge badge-secondary" style="font-size: 11px; padding: 4px 8px; margin-bottom: 0.5rem; display: inline-block; background: #94a3b8; color: white;">● Unavailable</span>`;
 
-        const subPills = tutor.subjects.map(s => `<span class="subject-tag" style="margin: 2px; font-size: 11px; padding: 2px 6px;">${sanitize(s)}</span>`).join('');
+        const subPills = (tutor.subjects || []).map(s => `<span class="subject-tag" style="margin: 2px; font-size: 11px; padding: 2px 6px;">${sanitize(s)}</span>`).join('');
 
         return `
           <div class="tutor-card animate-fade-in-up card" style="display: flex; flex-direction: column; justify-content: space-between;">
             <div>
               <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                <div class="tutor-avatar" style="margin: 0; font-size: 2.5rem; width: 60px; height: 60px; background: var(--color-muted); border-radius: 50%; display: flex; align-items: center; justify-content: center;">${sanitize(tutor.avatar)}</div>
+                <div class="tutor-avatar" style="margin: 0; font-size: 2.5rem; width: 60px; height: 60px; background: var(--color-muted); border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden;">${renderAvatar(tutor.avatar, 60, tutor.name)}</div>
                 ${availBadge}
               </div>
               <div class="tutor-content" style="padding: 0;">
@@ -1793,17 +2083,14 @@ function renderFindTutors() {
               </div>
             </div>
             <div>
-              <div class="tutor-meta" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-muted); display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                  <div class="rating-display" style="font-size: 0.85rem;">
-                    ${UI.renderStars(Math.round(tutor.rating))}
-                    <span class="rating-count" style="font-size: 11px;">(${sanitize(tutor.totalReviews)})</span>
-                  </div>
+              <div class="tutor-meta" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-muted); display: flex; justify-content: flex-start; align-items: center;">
+                <div class="rating-display" style="font-size: 0.85rem;">
+                  ${UI.renderStars(Math.round(tutor.rating || 0))}
+                  <span class="rating-count" style="font-size: 11px;">(${sanitize(tutor.totalReviews || 0)})</span>
                 </div>
-                <div class="tutor-rate" style="font-weight: 700; color: var(--color-primary); font-size: 1.15rem;">$${sanitize(tutor.hourlyRate)}/hr</div>
               </div>
               <div style="font-size: 0.8rem; color: var(--color-text-secondary); margin: 0.5rem 0;">
-                ${sanitize(tutor.yearsOfExperience)} yrs exp • ${sanitize(tutor.experienceLevel)}
+                ${sanitize((tutor.years_of_experience ?? tutor.yearsOfExperience ?? 0) || 0)} yrs exp • ${sanitize(tutor.experienceLevel || 'N/A')}
               </div>
               <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
                 <button class="btn btn-outline btn-sm" style="flex: 1;" onclick="router.navigate('/tutors/${tutor.id}')">Profile</button>
@@ -1817,28 +2104,69 @@ function renderFindTutors() {
 
     updateDisplay();
 
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-      filters.search = e.target.value;
-      updateDisplay();
-    });
+    const searchInputEl = document.getElementById('searchInput');
+    if (searchInputEl) {
+      searchInputEl.addEventListener('input', (e) => {
+        filters.search = e.target.value.trim();
+        updateDisplay();
+      });
+    }
 
-    document.getElementById('subjectFilter').addEventListener('change', (e) => {
-      filters.subject = e.target.value;
-      updateDisplay();
-    });
+    const subjectFilterEl = document.getElementById('subjectFilter');
+    if (subjectFilterEl) {
+      subjectFilterEl.addEventListener('change', (e) => {
+        filters.subject = e.target.value;
+        updateDisplay();
+      });
+    }
 
-    document.getElementById('sortBy').addEventListener('change', (e) => {
-      filters.sort = e.target.value;
-      updateDisplay();
-    });
-  }, 600);
+    const sortByEl = document.getElementById('sortBy');
+    if (sortByEl) {
+      sortByEl.addEventListener('change', (e) => {
+        filters.sort = e.target.value;
+        updateDisplay();
+      });
+    }
+
+    const searchBtn = document.getElementById('searchBtn');
+    if (searchBtn) {
+      searchBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+          filters.search = searchInput.value.trim();
+          updateDisplay();
+        }
+      });
+    }
+  } catch (error) {
+    console.error('[FindTutors] Critical error:', error);
+    UI.showAlert('Failed to load tutors. Please try again.', 'error');
+    // Show empty state on error
+    UI.setContent(`
+      <div class="container" style="padding: 2rem 0;">
+        <h1 class="mb-lg">Find Your Perfect Tutor</h1>
+        <div class="card text-center" style="padding: 3rem;">
+          <div style="font-size: 4rem; margin-bottom: 1rem;">⚠️</div>
+          <h3 style="margin-bottom: 0.5rem;">Unable to Load Tutors</h3>
+          <p class="text-muted">Something went wrong while loading the tutor list. Please refresh the page and try again.</p>
+          <button class="btn btn-primary" onclick="router.navigate('/tutors')" style="margin-top: 1rem;">Retry</button>
+        </div>
+      </div>
+    `);
+  }
 }
 
 // PAGE 6: TUTOR PROFILE
-function renderTutorProfile(hash) {
+async function renderTutorProfile(hash) {
+  if (!appData) {
+    console.error('[TutorProfile] appData not initialized');
+    return;
+  }
   const tutorId = hash.split('/')[2];
-  const tutor = appData.getTutorById(tutorId);
-  const reviews = appData.getReviews().filter(r => r.tutorId === tutorId);
+  const tutor = await appData.getTutorById(tutorId);
+  const reviewsResult = await appData.getReviews() || [];
+  const reviews = (Array.isArray(reviewsResult) ? reviewsResult : []).filter(r => r.tutorId === tutorId);
 
   if (!tutor) {
     router.navigate('/tutors');
@@ -1850,7 +2178,7 @@ function renderTutorProfile(hash) {
       <button class="btn btn-ghost mb-lg" onclick="router.navigate('/tutors')">&larr; Back to Tutors</button>
 
       <div class="profile-header">
-        <div class="profile-avatar">${sanitize(tutor.avatar)}</div>
+        <div class="profile-avatar" style="font-size: 4rem; width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; overflow: hidden;">${renderAvatar(tutor.avatar, 100, tutor.name)}</div>
         <div class="profile-info">
           <div class="profile-name">${sanitize(tutor.name)}</div>
           <div class="rating-display" style="margin-bottom: 1rem;">
@@ -1859,17 +2187,13 @@ function renderTutorProfile(hash) {
           </div>
           <div class="profile-meta">
             <div class="profile-meta-item">
-              <div class="profile-meta-label">Hourly Rate</div>
-              <div class="profile-meta-value">$${sanitize(tutor.hourlyRate)}</div>
-            </div>
-            <div class="profile-meta-item">
               <div class="profile-meta-label">Experience</div>
-              <div class="profile-meta-value">${sanitize(tutor.yearsOfExperience)} years</div>
+              <div class="profile-meta-value">${sanitize((tutor.years_of_experience ?? tutor.yearsOfExperience ?? 0))} years</div>
             </div>
             <div class="profile-meta-item">
               <div class="profile-meta-label">Status</div>
-              <div class="profile-meta-value" style="color: ${tutor.isAvailable ? '#10B981' : '#EF4444'};">
-                ${tutor.isAvailable ? '● Available Today' : '● Unavailable'}
+              <div class="profile-meta-value" style="color: ${(tutor.is_available ?? tutor.isAvailable ?? true) ? '#10B981' : '#EF4444'};">
+                ${(tutor.is_available ?? tutor.isAvailable ?? true) ? '● Available Today' : '● Unavailable'}
               </div>
             </div>
           </div>
@@ -1916,10 +2240,7 @@ function renderTutorProfile(hash) {
 
     <!-- Mobile Sticky Book Bar -->
     <div class="mobile-sticky-book-bar">
-      <div>
-        <div style="font-weight: 800; font-size: 1.25rem; color: var(--color-primary);">$${sanitize(tutor.hourlyRate)}/hr</div>
-        <div style="font-size: 0.8rem; color: var(--color-text-secondary);">${UI.renderStars(Math.round(tutor.rating))}</div>
-      </div>
+      <div style="font-size: 0.8rem; color: var(--color-text-secondary);">${UI.renderStars(Math.round(tutor.rating))}</div>
       <button class="btn btn-primary" onclick="bookSession('${tutorId}', '${sanitize(tutor.name)}')">Book Now</button>
     </div>
   `;
@@ -1927,8 +2248,14 @@ function renderTutorProfile(hash) {
 }
 
 // Global Multi-step Booking Stepper Controller
-window.bookSession = (tutorId, tutorName) => {
-  const tutor = appData.getTutorById(tutorId);
+window.bookSession = async (tutorId, tutorName) => {
+  const user = appData.getCurrentUser();
+  if (!user) {
+    UI.showAlert('Please log in to book a session.', 'warning');
+    setTimeout(() => router.navigate('/login'), 1200);
+    return;
+  }
+  const tutor = await appData.getTutorById(tutorId);
   const subjects = tutor ? tutor.subjects : [];
   
   let currentStep = 1;
@@ -1948,22 +2275,22 @@ window.bookSession = (tutorId, tutorName) => {
         </div>
         <div class="form-group">
           <label class="form-label">Select Date</label>
-          <input type="date" class="form-input" id="stepDate" value="${date}" required>
+          <input type="date" class="form-input" id="stepDate" value="${sanitize(date)}" required>
         </div>
         <div class="form-group">
           <label class="form-label">Select Time</label>
-          <input type="time" class="form-input" id="stepTime" value="${time}" required>
+          <input type="time" class="form-input" id="stepTime" value="${sanitize(time)}" required>
         </div>
         <div class="form-group">
           <label class="form-label">Subject</label>
           <select class="form-select" id="stepSubject" required>
             <option value="">Select subject</option>
-            ${subjects.map(s => `<option value="${s}" ${s === subject ? 'selected' : ''}>${s}</option>`).join('')}
+            ${subjects.map(s => `<option value="${sanitize(s)}" ${s === subject ? 'selected' : ''}>${sanitize(s)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Duration (minutes)</label>
-          <input type="number" class="form-input" id="stepDuration" value="${duration}" min="30" max="180" required>
+          <input type="number" class="form-input" id="stepDuration" value="${sanitize(duration)}" min="30" max="180" required>
         </div>
         <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
           <button type="button" class="btn btn-primary" style="flex: 1;" onclick="goToStep(2)">Next Step &rarr;</button>
@@ -1979,7 +2306,7 @@ window.bookSession = (tutorId, tutorName) => {
         </div>
         <div class="form-group">
           <label class="form-label">Session Notes (Optional)</label>
-          <textarea class="form-textarea" id="stepNotes" rows="4" placeholder="Mention any homework topics or specific challenges you have...">${notes}</textarea>
+          <textarea class="form-textarea" id="stepNotes" rows="4" placeholder="Mention any homework topics or specific challenges you have...">${sanitize(notes)}</textarea>
         </div>
         <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
           <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="goToStep(1)">&larr; Back</button>
@@ -2057,10 +2384,9 @@ window.bookSession = (tutorId, tutorName) => {
     }
 
     const newBooking = {
-      studentId: student.id,
-      tutorId: tutorId,
-      date: date,
-      time: time,
+      student_id: student.id,
+      tutor_id: tutorId,
+      scheduled_at: new Date(`${date}T${time}`).toISOString(),
       duration: parseInt(duration),
       subject: subject,
       status: 'pending',
@@ -2068,7 +2394,7 @@ window.bookSession = (tutorId, tutorName) => {
     };
 
     appData.addBooking(newBooking);
-    UI.showAlert('Session successfully requested!', 'success');
+    UI.showAlert('Session successfully requested! Waiting for admin approval.', 'success');
     modal.remove();
 
     if (router.currentPage === '/student-dashboard') {
@@ -2096,13 +2422,32 @@ function sendMessage(tutorId, tutorName) {
   const modal = UI.showModal(html, 'Send Message');
   document.getElementById('messageForm').addEventListener('submit', (e) => {
     e.preventDefault();
+    const currentUser = appData.getCurrentUser() || { id: 'user1' };
+    const text = document.getElementById('messageText').value.trim();
+    if (text) {
+      appData.addMessage({
+        senderId: currentUser.id,
+        recipientId: tutorId,
+        content: text,
+        timestamp: new Date().toISOString(),
+        read: false,
+        threadId: [currentUser.id, tutorId].sort()[0] + '__' + [currentUser.id, tutorId].sort()[1] + '__general',
+        sessionId: null,
+        attachments: []
+      });
+    }
     UI.showAlert('Message sent!', 'success');
     modal.remove();
   });
 }
 
 // PAGE 7: STUDENT DASHBOARD
-function renderStudentDashboard() {
+async function renderStudentDashboard() {
+  if (!appData) {
+    console.error('[StudentDashboard] appData not initialized');
+    return;
+  }
+  if (!requireRole(['student'])) return;
   const user = appData.getCurrentUser();
 
   // 600ms Skeleton Loader
@@ -2119,10 +2464,11 @@ function renderStudentDashboard() {
   `;
   UI.setContent(skeletonHtml);
 
-  setTimeout(() => {
+  setTimeout(async () => {
     if (router.currentPage !== '/student-dashboard') return;
 
-    const bookings = appData.getBookings().filter(b => b.studentId === (user?.id || 'user1'));
+    const allBookings = await appData.getBookings() || [];
+    const bookings = (Array.isArray(allBookings) ? allBookings : []).filter(b => (b.student_id || b.studentId) === user?.id);
     const completedSessions = bookings.filter(b => b.status === 'completed').length;
     const upcomingSessions = bookings.filter(b => b.status === 'confirmed').length;
 
@@ -2164,11 +2510,9 @@ function renderStudentDashboard() {
       `;
     }
 
-    // Leaderboard streak and points
-    const studentLeaderboard = appData.getLeaderboard().students;
-    const currentStudent = studentLeaderboard.find(s => s.name === (user?.name || 'Rahul Kumar'));
-    const streak = currentStudent ? currentStudent.streak : 12;
-    const points = currentStudent ? currentStudent.points : 2320;
+    // Streak and points (simplified without leaderboard)
+    const streak = 12;
+    const points = 2320;
 
     const streakRingHtml = `
       <div class="card" style="margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; padding: 1.5rem;">
@@ -2194,7 +2538,12 @@ function renderStudentDashboard() {
 
     const actualHtml = `
       <div class="container" style="padding: 2rem 0;">
-        <h1 class="mb-lg">Welcome back, ${user ? sanitize(user.name) : 'Student'}!</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+          <h1 style="margin: 0;">Welcome back, ${user ? sanitize(user.name) : 'Student'}!</h1>
+          <button class="btn btn-outline" onclick="window.location.href='setup-student-profile.html'">
+            ✏️ Edit Profile
+          </button>
+        </div>
 
         ${countdownCard}
 
@@ -2226,22 +2575,27 @@ function renderStudentDashboard() {
           <h2 class="mb-lg">Your Sessions</h2>
           ${bookings.length > 0 ? `
             <div class="session-list">
-              ${bookings.map(booking => `
+              ${bookings.map(booking => {
+                const tutorUser = appData.getUsers().find(u => u.id === booking.tutorId);
+                const tutorName = tutorUser ? sanitize(tutorUser.name) : 'Tutor';
+                return `
                 <div class="session-item" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid var(--color-muted);">
                   <div class="session-info">
-                    <div class="session-title" style="font-weight: 600; font-size: 1.05rem;">${sanitize(booking.subject)} Session with Tutor</div>
+                    <div class="session-title" style="font-weight: 600; font-size: 1.05rem;">${sanitize(booking.subject)} Session with ${tutorName}</div>
                     <div class="session-meta text-muted" style="font-size: 0.85rem; margin-top: 0.25rem;">
                       <span style="margin-right: 1rem;">📅 ${sanitize(booking.date)}</span>
                       <span style="margin-right: 1rem;">⏰ ${sanitize(booking.time)}</span>
                       <span>⏱️ ${sanitize(booking.duration)} mins</span>
                     </div>
                   </div>
-                  <div class="session-actions" style="display: flex; align-items: center; gap: 1rem;">
+                  <div class="session-actions" style="display: flex; align-items: center; gap: 0.5rem;">
                     ${UI.getStatusBadge(booking.status)}
+                    <button class="btn btn-sm btn-secondary" onclick="openChatWith('${booking.tutorId}', '${booking.id}')">Message</button>
                     ${booking.status === 'completed' ? `<button class="btn btn-sm btn-primary" onclick="leaveReview('${booking.id}')">Leave Review</button>` : ''}
                   </div>
                 </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
           ` : `
             <div class="empty-state">
@@ -2297,7 +2651,7 @@ function renderStudentDashboard() {
       UI.showAlert('Feedback submitted successfully!', 'success');
       document.getElementById('feedbackForm').reset();
     });
-  }, 600);
+  }, 150);
 }
 
 function leaveReview(bookingId) {
@@ -2347,7 +2701,12 @@ function leaveReview(bookingId) {
 }
 
 // PAGE 8: TUTOR DASHBOARD
-function renderTutorDashboard() {
+async function renderTutorDashboard() {
+  if (!appData) {
+    console.error('[TutorDashboard] appData not initialized');
+    return;
+  }
+  if (!requireRole(['tutor'])) return;
   const user = appData.getCurrentUser();
 
   // 600ms Skeleton Loader
@@ -2363,41 +2722,29 @@ function renderTutorDashboard() {
   `;
   UI.setContent(skeletonHtml);
 
-  setTimeout(() => {
+  setTimeout(async () => {
     if (router.currentPage !== '/tutor-dashboard') return;
 
-    const bookings = appData.getBookings();
-    const tutorBookings = bookings.filter(b => b.tutorId === (user?.id || 'tutor1'));
-    
-    const tutorUser = appData.getTutorById(user?.id || 'tutor1');
-    const rate = tutorUser ? tutorUser.hourlyRate : 25;
+    const bookingsResult = await appData.getBookings() || [];
+    const bookings = Array.isArray(bookingsResult) ? bookingsResult : [];
+    const tutorBookings = bookings.filter(b => (b.tutor_id || b.tutorId) === user?.id);
     
     const pending = tutorBookings.filter(b => b.status === 'pending');
     const active = tutorBookings.filter(b => b.status === 'confirmed');
     const completed = tutorBookings.filter(b => b.status === 'completed');
-    
-    // Earnings summary card: complete bookings * rate
-    const totalEarnings = completed.reduce((sum, b) => sum + (b.duration / 60) * rate, 0);
 
-    const earningsCardHtml = `
-      <div class="card" style="margin-bottom: 2rem; background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); color: white; border: none; padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
-        <div>
-          <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; display: block; margin-bottom: 0.25rem;">Total Earnings</span>
-          <h3 style="color: white; margin: 0 0 0.5rem 0; font-size: 2.25rem; font-weight: 800;">$${totalEarnings.toFixed(2)}</h3>
-          <p style="margin: 0; font-size: 0.9rem; opacity: 0.9;">Calculated from ${completed.length} completed tutoring sessions at $${rate}/hr</p>
-        </div>
-        <div style="font-size: 3.5rem; opacity: 0.9;">💰</div>
-      </div>
-    `;
 
     // Priority Sort Bookings (Pending -> Confirmed -> Completed)
     const priorityBookings = [...pending, ...active, ...completed, ...tutorBookings.filter(b => b.status === 'cancelled')];
 
     const actualHtml = `
       <div class="container" style="padding: 2rem 0;">
-        <h1 class="mb-lg">Tutor Dashboard</h1>
-
-        ${earningsCardHtml}
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+          <h1 style="margin: 0;">Tutor Dashboard</h1>
+          <button class="btn btn-outline" onclick="window.location.href='setup-tutor-profile.html'">
+            ✏️ Edit Profile
+          </button>
+        </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
           <div class="card" style="padding: 1.25rem; text-align: center; border-left: 4px solid var(--color-primary);">
@@ -2418,10 +2765,13 @@ function renderTutorDashboard() {
           <div class="card animate-fade-in-up" style="margin-bottom: 2rem; border: 1px solid #f59e0b; background-color: rgba(245, 158, 11, 0.03);">
             <h3 style="color: #d97706; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">⚠️ Priority Actions: Pending Session Requests</h3>
             <div class="session-list">
-              ${pending.map(booking => `
+              ${pending.map(booking => {
+                const studentUser = appData.getUsers().find(u => u.id === booking.studentId);
+                const studentName = studentUser ? sanitize(studentUser.name) : 'Student';
+                return `
                 <div class="session-item" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid var(--color-muted);">
                   <div class="session-info">
-                    <div style="font-weight: 700; font-size: 1.05rem;">${sanitize(booking.subject)} Session Request</div>
+                    <div style="font-weight: 700; font-size: 1.05rem;">${sanitize(booking.subject)} Session Request from ${studentName}</div>
                     <div class="session-meta text-muted" style="font-size: 0.85rem; margin-top: 0.25rem;">
                       <span style="margin-right: 1rem;">📅 ${sanitize(booking.date)}</span>
                       <span style="margin-right: 1rem;">⏰ ${sanitize(booking.time)}</span>
@@ -2431,9 +2781,11 @@ function renderTutorDashboard() {
                   <div class="session-actions" style="display: flex; align-items: center; gap: 0.5rem;">
                     <button class="btn btn-sm btn-success" onclick="respondRequest('${booking.id}', 'accept')">Accept</button>
                     <button class="btn btn-sm btn-danger" onclick="respondRequest('${booking.id}', 'reject')">Decline</button>
+                    <button class="btn btn-sm btn-secondary" onclick="openChatWith('${booking.studentId}', '${booking.id}')">Message</button>
                   </div>
                 </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
           </div>
         ` : ''}
@@ -2442,22 +2794,26 @@ function renderTutorDashboard() {
           <h2 class="mb-lg">All Assigned Sessions</h2>
           ${tutorBookings.length > 0 ? `
             <div class="session-list">
-              ${priorityBookings.filter(b => b.status !== 'pending').map(booking => `
+              ${priorityBookings.filter(b => b.status !== 'pending').map(booking => {
+                const studentUser = appData.getUsers().find(u => u.id === booking.studentId);
+                const studentName = studentUser ? sanitize(studentUser.name) : 'Student';
+                return `
                 <div class="session-item" style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid var(--color-muted);">
                   <div class="session-info">
-                    <div style="font-weight: 600; font-size: 1.05rem;">${sanitize(booking.subject)} Session</div>
+                    <div style="font-weight: 600; font-size: 1.05rem;">${sanitize(booking.subject)} Session with ${studentName}</div>
                     <div class="session-meta text-muted" style="font-size: 0.85rem; margin-top: 0.25rem;">
                       <span style="margin-right: 1rem;">📅 ${sanitize(booking.date)}</span>
                       <span style="margin-right: 1rem;">⏰ ${sanitize(booking.time)}</span>
                       <span style="margin-right: 1rem;">⏱️ ${sanitize(booking.duration)} mins</span>
-                      <span>Rate: $${rate}/hr</span>
                     </div>
                   </div>
-                  <div class="session-actions" style="display: flex; align-items: center; gap: 1rem;">
+                  <div class="session-actions" style="display: flex; align-items: center; gap: 0.5rem;">
                     ${UI.getStatusBadge(booking.status)}
+                    <button class="btn btn-sm btn-secondary" onclick="openChatWith('${booking.studentId}', '${booking.id}')">Message</button>
                   </div>
                 </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
           ` : `
             <div class="empty-state">
@@ -2471,7 +2827,7 @@ function renderTutorDashboard() {
     `;
 
     UI.setContent(actualHtml);
-  }, 600);
+  }, 150);
 }
 
 // Global Respond Event Handler
@@ -2485,75 +2841,319 @@ window.respondRequest = (bookingId, action) => {
 };
 
 // PAGE 9: MESSAGES/CHAT
-function renderChat() {
-  const messages = appData.getMessages();
-  const contacts = [
-    { id: 'tutor1', name: 'Priya Singh', role: 'Tutor', avatar: '👨‍🏫' },
-    { id: 'tutor2', name: 'Amit Patel', role: 'Tutor', avatar: '👨‍🏫' },
-    { id: 'tutor3', name: 'Sophia Chen', role: 'Tutor', avatar: '👩‍🏫' }
-  ];
+window.activeChatContactId = null;
+window.activeChatSessionId = null;
+
+function getChatCurrentUserId() {
+  return appData.getCurrentUser()?.id || 'user1';
+}
+
+async function getChatContacts() {
+  const currentUserId = getChatCurrentUserId();
+  const [users, allBookings, allMessages] = await Promise.all([
+    appData.getUsers(),
+    appData.getBookings(),
+    appData.getMessages()
+  ]);
+  const safeUsers = users || [];
+  const seen = new Set();
+  const results = [];
+
+  const bookings = (allBookings || []).filter(b =>
+    (b.student_id || b.studentId) === currentUserId ||
+    (b.tutor_id || b.tutorId) === currentUserId
+  );
+
+  bookings.forEach(booking => {
+    const studentId = booking.student_id || booking.studentId;
+    const tutorId   = booking.tutor_id   || booking.tutorId;
+    const contactId = studentId === currentUserId ? tutorId : studentId;
+    const contact = safeUsers.find(u => u.id === contactId) ||
+      { id: contactId, name: contactId, role: studentId === currentUserId ? 'tutor' : 'student' };
+    const key = `${contactId}:${booking.id || (booking.date+'_'+booking.subject)}`;
+    if (!seen.has(key)) { seen.add(key); results.push({ contact, booking }); }
+  });
+
+  (allMessages || []).forEach(msg => {
+    if (msg.sessionId || msg.session_id) return;
+    const otherUserId = msg.senderId === currentUserId ? msg.recipientId
+      : (msg.recipientId === currentUserId ? msg.senderId : null);
+    if (!otherUserId) return;
+    const key = `${otherUserId}:general`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      const contact = safeUsers.find(u => u.id === otherUserId) ||
+        { id: otherUserId, name: otherUserId, role: 'unknown' };
+      results.push({ contact, booking: { id: null, subject: 'Direct Message', date: '' } });
+    }
+  });
+
+  return results;
+}
+
+function getChatThreadId(contactId, sessionId) {
+  const users = [getChatCurrentUserId(), contactId].sort();
+  return users[0] + '__' + users[1] + '__' + (sessionId || 'general');
+}
+
+function formatMessageTime(timestamp) {
+  const date = timestamp ? new Date(timestamp) : new Date();
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+async function getChatThread(contactId, sessionId) {
+  const currentUserId = getChatCurrentUserId();
+  const threadId = getChatThreadId(contactId, sessionId);
+  const allMessages = await appData.getMessages() || [];
+  return allMessages.filter(msg =>
+    msg.threadId === threadId ||
+    (!msg.threadId && !sessionId && (
+      (msg.senderId === currentUserId && msg.recipientId === contactId) ||
+      (msg.senderId === contactId && msg.recipientId === currentUserId)
+    ))
+  ).sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+}
+
+function getInitial(name) {
+  if (!name) return '?';
+  return String(name).trim().charAt(0).toUpperCase();
+}
+
+async function renderChatMessages(contactId) {
+  const currentUserId = getChatCurrentUserId();
+  const thread = contactId ? await getChatThread(contactId, window.activeChatSessionId) : [];
+  const users = (await appData.getUsers()) || [];
+  const currentUser = appData.getCurrentUser() || users.find(u => u.id === currentUserId) || { name: 'You' };
+  const contact = users.find(u => u.id === contactId) || { name: 'Contact' };
+
+  if (!contactId || thread.length === 0) {
+    return `
+      <div class="empty-state" style="border: none; background: transparent; text-align:center; padding: 2rem 1rem;">
+        <div class="empty-state-icon" style="font-size: 3.5rem; margin-bottom: 0.5rem;">💬</div>
+        <h4>No conversation history. Send a message to start!</h4>
+      </div>
+    `;
+  }
+
+  let lastTime = '';
+  let html = '';
+  thread.forEach(msg => {
+    const isSent = msg.senderId === currentUserId;
+    const time = formatMessageTime(msg.timestamp);
+    if (time !== lastTime) {
+      html += `<div class="timestamp">${sanitize(time)}</div>`;
+      lastTime = time;
+    }
+    const author = isSent ? currentUser : contact;
+    const avatar = `<div class="msg-av">${sanitize(getInitial(author.name))}<div class="online-dot"></div></div>`;
+    const attachmentsHtml = (msg.attachments || []).map(att => `
+      <div style="margin-top: 6px;">
+        <a href="${att.dataUrl}" download="${sanitize(att.name)}" style="color: inherit; text-decoration: underline;">📎 ${sanitize(att.name)}</a>
+      </div>
+    `).join('');
+    const tick = isSent ? '<span class="tick">✓✓</span>' : '';
+    html += `
+      <div class="msg-row ${isSent ? 'sent' : ''}">
+        ${avatar}
+        <div class="bubble ${isSent ? 'sent' : 'recv'}">
+          ${msg.content ? `<div>${sanitize(msg.content)}</div>` : ''}
+          ${attachmentsHtml}
+          ${tick}
+        </div>
+      </div>
+    `;
+  });
+  return html;
+}
+
+async function refreshChatThread() {
+  const chatMessages = document.getElementById('chatMessages');
+  if (!chatMessages) return;
+  chatMessages.innerHTML = renderChatMessages(window.activeChatContactId);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function renderChat() {
+  if (!appData) {
+    console.error('[Chat] appData not initialized');
+    return;
+  }
+  if (!requireRole(['student', 'tutor', 'admin'])) return;
+  const contacts = await getChatContacts();
+  if ((!window.activeChatContactId || !contacts.some(c => c.contact.id === window.activeChatContactId && c.booking.id === window.activeChatSessionId)) && contacts.length > 0) {
+    window.activeChatContactId = contacts[0].contact.id;
+    window.activeChatSessionId = contacts[0].booking.id;
+  }
+
+  const active = contacts.find(c => c.contact.id === window.activeChatContactId && c.booking.id === window.activeChatSessionId) || contacts[0];
+  const activeContact = active?.contact;
+  const activeBooking = active?.booking || {};
+  const currentUserName = appData.getCurrentUser()?.name || 'You';
 
   const html = `
     <div class="chat-container">
       <div class="chat-sidebar">
         <ul class="chat-list" id="chatList">
-          ${contacts.map(contact => `
-            <li class="chat-item ${contact.id === 'tutor1' ? 'active' : ''}" onclick="selectChat('${contact.id}', this)">
+          ${contacts.length > 0 ? contacts.map(({ contact, booking }) => `
+            <li class="chat-item ${contact.id === window.activeChatContactId && booking.id === window.activeChatSessionId ? 'active' : ''}" onclick="selectChat('${contact.id}', '${booking.id}', this)">
               <div class="chat-item-name">${sanitize(contact.name)}</div>
-              <div class="chat-item-message">${sanitize(contact.role)}</div>
+              <div class="chat-item-message">${sanitize(booking.subject || 'Session')} • ${sanitize(booking.date || '')}</div>
             </li>
-          `).join('')}
+          `).join('') : `
+            <li class="chat-item" style="opacity: 0.6; cursor: default;">
+              <div class="chat-item-name">No session contacts yet</div>
+              <div class="chat-item-message">Book or receive sessions to chat</div>
+            </li>
+          `}
         </ul>
       </div>
 
       <div class="chat-main">
-        <div class="chat-messages" id="chatMessages">
-          ${messages.length > 0 ? messages.slice(0, 8).map(msg => `
-            <div class="message ${msg.senderId === 'user1' ? 'sent' : 'received'}">
-              <div class="message-bubble">${sanitize(msg.content)}</div>
-            </div>
-          `).join('') : `
-            <div class="empty-state" style="border: none; background: transparent;">
-              <div class="empty-state-icon" style="font-size: 3.5rem; margin-bottom: 0.5rem;">💬</div>
-              <h4>No conversation history. Send a message to start!</h4>
-            </div>
-          `}
-        </div>
+        <div class="chat-card">
+          ${activeContact ? `
+            <div class="chat-header">
+              <div class="header-row1">
+                <button class="back-btn" onclick="history.back()" aria-label="Back">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span class="session-title">${sanitize(activeBooking.subject || 'Session')} — ${sanitize(activeContact.name)}</span>
+                ${activeBooking.status ? `<span class="time-chip">${sanitize(activeBooking.status)}</span>` : ''}
+                <div class="avatars">
+                  <div class="av">${sanitize(getInitial(currentUserName))}</div>
+                  <div class="av">${sanitize(getInitial(activeContact.name))}</div>
+                </div>
+              </div>
 
-        <div class="chat-input">
-          <input type="text" id="messageInput" placeholder="Type a message..." />
-          <button class="btn btn-primary" onclick="sendChatMessage()">Send</button>
+              ${(activeBooking.date || activeBooking.time) ? `
+                <div class="time-block">
+                  <div class="time-slot">
+                    <div class="time-num">${sanitize(activeBooking.time || '—')}</div>
+                    <div class="time-date">${sanitize(activeBooking.date || '')}</div>
+                  </div>
+                  <div class="time-arrow">›</div>
+                  <div class="time-slot">
+                    <div class="time-num">${sanitize(activeBooking.duration ? activeBooking.duration + ' min' : 'Session')}</div>
+                    <div class="time-date">${sanitize(activeBooking.status || '')}</div>
+                  </div>
+                  <div class="header-dots">···</div>
+                </div>
+              ` : ''}
+
+              <div class="header-tags">
+                ${activeBooking.subject ? `<span class="htag">📚 ${sanitize(activeBooking.subject)}</span>` : ''}
+                <span class="htag">💬 Direct Chat</span>
+                ${activeContact.role ? `<span class="htag">🎓 ${sanitize(activeContact.role)}</span>` : ''}
+              </div>
+            </div>
+          ` : ''}
+
+          <div class="messages" id="chatMessages">
+            ${renderChatMessages(window.activeChatContactId)}
+          </div>
+
+          <div class="chat-input">
+            <input class="input-field" type="text" id="messageInput" placeholder="Type a message…" />
+            <div class="input-actions">
+              <button class="act-btn" title="Attach file" onclick="document.getElementById('chatAttachment').click()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <input type="file" id="chatAttachment" style="display: none;" onchange="showSelectedAttachmentName()" />
+              <button class="act-btn" title="Emoji" onclick="insertEmoji()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+              </button>
+              <button class="send-btn" onclick="sendChatMessage()">
+                Send
+                <span class="send-divider"></span>
+                <span class="send-chevron">▾</span>
+              </button>
+            </div>
+            <div id="attachmentName" class="text-muted text-sm" style="padding: 0.25rem 0 0;"></div>
+          </div>
         </div>
       </div>
     </div>
   `;
   UI.setContent(html);
+  refreshChatThread();
+
+  document.getElementById('messageInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
 }
 
-window.selectChat = (contactId, element) => {
+window.selectChat = (contactId, sessionId, element) => {
+  window.activeChatContactId = contactId;
+  // Treat the string 'null' (from template literals) as an actual null
+  window.activeChatSessionId = (sessionId === 'null' || sessionId === 'undefined') ? null : sessionId;
   document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
   element.classList.add('active');
-  UI.showAlert('Switched conversation thread.', 'success');
+  refreshChatThread();
 };
 
-window.sendChatMessage = () => {
+// Navigate to Chat with a specific contact pre-selected (used by dashboard buttons)
+window.openChatWith = (contactId, sessionId) => {
+  window.activeChatContactId = contactId;
+  window.activeChatSessionId = (sessionId === 'null' || sessionId === 'undefined' || !sessionId) ? null : sessionId;
+  router.navigate('/chat');
+};
+
+window.insertEmoji = () => {
   const input = document.getElementById('messageInput');
-  if (input && input.value.trim()) {
+  if (!input) return;
+  input.value = (input.value || '') + '😊';
+  input.focus();
+};
+
+window.showSelectedAttachmentName = () => {
+  const file = document.getElementById('chatAttachment')?.files?.[0];
+  const label = document.getElementById('attachmentName');
+  if (label) label.textContent = file ? `Attached: ${file.name}` : '';
+};
+
+window.sendChatMessage = async () => {
+  const input = document.getElementById('messageInput');
+  const fileInput = document.getElementById('chatAttachment');
+  const file = fileInput?.files?.[0];
+  if (input && (input.value.trim() || file) && window.activeChatContactId) {
+    const attachments = [];
+    if (file) {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      attachments.push({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, dataUrl });
+    }
     const newMsg = {
-      senderId: 'user1',
-      recipientId: 'tutor1',
-      content: input.value,
+      senderId: getChatCurrentUserId(),
+      recipientId: window.activeChatContactId,
+      content: input.value.trim(),
       timestamp: new Date().toISOString(),
-      read: false
+      read: false,
+      threadId: getChatThreadId(window.activeChatContactId, window.activeChatSessionId),
+      sessionId: window.activeChatSessionId,
+      attachments
     };
     appData.addMessage(newMsg);
     input.value = '';
-    renderChat();
+    if (fileInput) fileInput.value = '';
+    const attachmentName = document.getElementById('attachmentName');
+    if (attachmentName) attachmentName.textContent = '';
+    refreshChatThread();
   }
 };
 
 // PAGE 10: ASSIGNMENTS
 function renderAssignments() {
+  if (!appData) {
+    console.error('[Assignments] appData not initialized');
+    return;
+  }
+  if (!requireRole(['student', 'tutor', 'admin'])) return;
   const assignments = appData.getAssignments();
 
   const html = `
@@ -2643,25 +3243,153 @@ window.selectAssignment = (idx) => {
 };
 
 // PAGE 11: SCHEDULE CALENDAR
-function renderSchedule() {
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+window._scheduleYear = null;
+window._scheduleMonth = null;
+window._selectedDay = null;
+window._timeSlots = [
+  { date: '2026-05-25', start: '14:00', end: '17:00' },
+  { date: '2026-05-27', start: '15:00', end: '18:00' },
+  { date: '2026-05-29', start: '13:00', end: '16:00' }
+];
+
+function formatTime12(t) {
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return ((h % 12) || 12) + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+}
+
+function buildCalendarHTML(year, month) {
   const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-
-  const getDaysInMonth = (m) => new Date(year, m + 1, 0).getDate();
-  const getFirstDay = (m) => new Date(year, m, 1).getDay();
-
-  const daysInMonth = getDaysInMonth(month);
-  const firstDay = getFirstDay(month);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
 
   let calendarDays = '';
   for (let i = 0; i < firstDay; i++) {
     calendarDays += '<div class="calendar-day disabled"></div>';
   }
   for (let i = 1; i <= daysInMonth; i++) {
-    const isToday = i === today.getDate();
-    calendarDays += `<div class="calendar-day ${isToday ? 'today' : ''}">${i}</div>`;
+    const isToday = i === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+    const isSelected = i === window._selectedDay && month === window._scheduleMonth && year === window._scheduleYear;
+    let cls = 'calendar-day';
+    if (isToday && !isSelected) cls += ' today';
+    if (isSelected) cls += ' selected';
+    calendarDays += `<div class="${cls}" data-day="${i}">${i}</div>`;
   }
+
+  return `
+    <div class="calendar-header">
+      <h3>${MONTH_NAMES[month]} ${year}</h3>
+      <div class="calendar-nav">
+        <button type="button" class="btn btn-sm btn-secondary" id="cal-prev-btn">\u2190</button>
+        <button type="button" class="btn btn-sm btn-secondary" id="cal-next-btn">\u2192</button>
+      </div>
+    </div>
+    <div class="calendar-grid" id="calendar-grid">
+      <div class="calendar-day-header">Sun</div>
+      <div class="calendar-day-header">Mon</div>
+      <div class="calendar-day-header">Tue</div>
+      <div class="calendar-day-header">Wed</div>
+      <div class="calendar-day-header">Thu</div>
+      <div class="calendar-day-header">Fri</div>
+      <div class="calendar-day-header">Sat</div>
+      ${calendarDays}
+    </div>
+  `;
+}
+
+function formatSlotDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  var dayName = DAY_NAMES[d.getDay()].slice(0, 3);
+  var monthName = MONTH_NAMES[d.getMonth()].slice(0, 3);
+  return dayName + ', ' + monthName + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
+
+function getSelectedDateStr() {
+  if (window._selectedDay === null) return null;
+  var m = String(window._scheduleMonth + 1).padStart(2, '0');
+  var d = String(window._selectedDay).padStart(2, '0');
+  return window._scheduleYear + '-' + m + '-' + d;
+}
+
+function buildTimeSlotsHTML() {
+  if (window._timeSlots.length === 0) {
+    return '<p class="text-muted">No time slots added yet.</p>';
+  }
+  return window._timeSlots.map((slot, i) => `
+    <div class="availability-item">
+      <div class="availability-time">
+        <div class="availability-time-badge">${formatSlotDate(slot.date)} ${formatTime12(slot.start)} - ${formatTime12(slot.end)}</div>
+      </div>
+      <button type="button" class="btn btn-sm btn-danger" data-remove-slot="${i}">Remove</button>
+    </div>
+  `).join('');
+}
+
+function refreshCalendar() {
+  const calEl = document.querySelector('.calendar');
+  if (!calEl) return;
+  calEl.innerHTML = buildCalendarHTML(window._scheduleYear, window._scheduleMonth);
+  attachCalendarListeners();
+}
+
+function refreshSlots() {
+  const listEl = document.querySelector('.availability-list');
+  if (!listEl) return;
+  listEl.innerHTML = buildTimeSlotsHTML();
+  attachSlotListeners();
+}
+
+function attachCalendarListeners() {
+  var prev = document.getElementById('cal-prev-btn');
+  var next = document.getElementById('cal-next-btn');
+  if (prev) prev.addEventListener('click', function() {
+    window._selectedDay = null;
+    window._scheduleMonth--;
+    if (window._scheduleMonth < 0) { window._scheduleMonth = 11; window._scheduleYear--; }
+    refreshCalendar();
+  });
+  if (next) next.addEventListener('click', function() {
+    window._selectedDay = null;
+    window._scheduleMonth++;
+    if (window._scheduleMonth > 11) { window._scheduleMonth = 0; window._scheduleYear++; }
+    refreshCalendar();
+  });
+
+  var grid = document.getElementById('calendar-grid');
+  if (grid) grid.addEventListener('click', function(e) {
+    var dayEl = e.target.closest('.calendar-day[data-day]');
+    if (!dayEl || dayEl.classList.contains('disabled')) return;
+    window._selectedDay = parseInt(dayEl.getAttribute('data-day'), 10);
+    refreshCalendar();
+    var dateLabel = document.getElementById('selectedDateLabel');
+    if (dateLabel) dateLabel.textContent = formatSlotDate(getSelectedDateStr());
+  });
+}
+
+function attachSlotListeners() {
+  document.querySelectorAll('[data-remove-slot]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var idx = parseInt(btn.getAttribute('data-remove-slot'), 10);
+      window._timeSlots.splice(idx, 1);
+      refreshSlots();
+      UI.showAlert('Time slot removed.', 'success');
+    });
+  });
+}
+
+function renderSchedule() {
+  if (!appData) {
+    console.error('[Schedule] appData not initialized');
+    return;
+  }
+  if (!requireRole(['student', 'tutor', 'admin'])) return;
+  const today = new Date();
+  window._scheduleYear = today.getFullYear();
+  window._scheduleMonth = today.getMonth();
+  window._selectedDay = null;
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
@@ -2670,24 +3398,7 @@ function renderSchedule() {
       <div class="grid-2">
         <div>
           <div class="calendar">
-            <div class="calendar-header">
-              <h3>${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month]} ${year}</h3>
-              <div class="calendar-nav">
-                <button class="btn btn-sm btn-secondary">←</button>
-                <button class="btn btn-sm btn-secondary">→</button>
-              </div>
-            </div>
-
-            <div class="calendar-grid">
-              <div class="calendar-day-header">Sun</div>
-              <div class="calendar-day-header">Mon</div>
-              <div class="calendar-day-header">Tue</div>
-              <div class="calendar-day-header">Wed</div>
-              <div class="calendar-day-header">Thu</div>
-              <div class="calendar-day-header">Fri</div>
-              <div class="calendar-day-header">Sat</div>
-              ${calendarDays}
-            </div>
+            ${buildCalendarHTML(window._scheduleYear, window._scheduleMonth)}
           </div>
         </div>
 
@@ -2695,45 +3406,20 @@ function renderSchedule() {
           <div class="card">
             <h3 class="mb-lg">Available Time Slots</h3>
             <div class="availability-list">
-              <div class="availability-item">
-                <div class="availability-time">
-                  <div class="availability-time-badge">Mon 2:00 PM - 5:00 PM</div>
-                </div>
-                <button class="btn btn-sm btn-danger">Remove</button>
-              </div>
-              <div class="availability-item">
-                <div class="availability-time">
-                  <div class="availability-time-badge">Wed 3:00 PM - 6:00 PM</div>
-                </div>
-                <button class="btn btn-sm btn-danger">Remove</button>
-              </div>
-              <div class="availability-item">
-                <div class="availability-time">
-                  <div class="availability-time-badge">Fri 1:00 PM - 4:00 PM</div>
-                </div>
-                <button class="btn btn-sm btn-danger">Remove</button>
-              </div>
+              ${buildTimeSlotsHTML()}
             </div>
 
             <h3 class="mt-lg mb-md">Add Availability</h3>
             <form id="addAvailabilityForm">
               <div class="form-group">
-                <select class="form-select" required>
-                  <option value="">Select Day</option>
-                  <option>Monday</option>
-                  <option>Tuesday</option>
-                  <option>Wednesday</option>
-                  <option>Thursday</option>
-                  <option>Friday</option>
-                  <option>Saturday</option>
-                  <option>Sunday</option>
-                </select>
+                <label class="switcher-label" style="margin-bottom: 4px; display: block;">Date</label>
+                <div id="selectedDateLabel" class="form-input" style="background: var(--color-background); color: var(--color-text-secondary); cursor: default;">Select a date on the calendar \u2190</div>
               </div>
               <div class="form-group">
-                <input type="time" class="form-input" placeholder="Start Time" required>
+                <input type="time" id="slotStart" class="form-input" required>
               </div>
               <div class="form-group">
-                <input type="time" class="form-input" placeholder="End Time" required>
+                <input type="time" id="slotEnd" class="form-input" required>
               </div>
               <div class="form-group">
                 <label><input type="checkbox"> Recurring Weekly</label>
@@ -2747,54 +3433,37 @@ function renderSchedule() {
   `;
   UI.setContent(html);
 
-  document.getElementById('addAvailabilityForm')?.addEventListener('submit', (e) => {
+  attachCalendarListeners();
+  attachSlotListeners();
+
+  document.getElementById('addAvailabilityForm')?.addEventListener('submit', function(e) {
     e.preventDefault();
+    var dateStr = getSelectedDateStr();
+    var start = document.getElementById('slotStart').value;
+    var end = document.getElementById('slotEnd').value;
+    if (!dateStr) {
+      UI.showAlert('Please select a date on the calendar first.', 'error');
+      return;
+    }
+    if (!start || !end) return;
+    if (start >= end) {
+      UI.showAlert('End time must be after start time.', 'error');
+      return;
+    }
+    window._timeSlots.push({ date: dateStr, start: start, end: end });
+    refreshSlots();
     UI.showAlert('Time slot added successfully!', 'success');
-    e.target.reset();
+    document.getElementById('slotStart').value = '';
+    document.getElementById('slotEnd').value = '';
   });
 }
 
-// PAGE 12: VIDEO CALL
-function renderVideoCall() {
-  const html = `
-    <div class="container" style="padding: 2rem 0;">
-      <h1 class="mb-lg">Video Call Session</h1>
-
-      <div class="video-timer">Session Duration: <span id="timer">00:00</span></div>
-
-      <div class="video-container">
-        <div style="color: white; text-align: center;">
-          <p style="font-size: 18px; margin-bottom: 1rem;">🎥 Live Classroom Active</p>
-          <p style="font-size: 14px; opacity: 0.8;">Connecting to student/tutor...</p>
-        </div>
-      </div>
-
-      <div class="video-controls">
-        <button class="video-control-btn" style="background-color: #10B981;" title="Unmute">🔊</button>
-        <button class="video-control-btn" style="background-color: #10B981;" title="Start Video">📹</button>
-        <button class="video-control-btn" style="background-color: var(--color-primary);" title="Share Screen">🖥️</button>
-        <button class="video-control-btn" style="background-color: #EF4444;" title="End Call">📞</button>
-      </div>
-    </div>
-  `;
-  UI.setContent(html);
-
-  let seconds = 0;
-  const interval = setInterval(() => {
-    const el = document.getElementById('timer');
-    if (!el) {
-      clearInterval(interval);
-      return;
-    }
-    seconds++;
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    el.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }, 1000);
-}
-
-// PAGE 13: LEADERBOARD
+// PAGE 12: LEADERBOARD
 function renderLeaderboard() {
+  if (!appData) {
+    console.error('[Leaderboard] appData not initialized');
+    return;
+  }
   const leaderboard = appData.getLeaderboard();
 
   const html = `
@@ -2917,275 +3586,26 @@ window.switchLeaderboardTab = (tabIndex) => {
   contents.forEach((c, i) => c.classList.toggle('active', i === tabIndex));
 };
 
-// PAGE 14: AI CHATBOT
-function renderAIChatbot() {
-  const html = `
-    <div class="container-sm" style="padding: 2rem 0; max-width: 620px;">
-      <h1 class="text-center mb-lg">AI Tutor Assistant</h1>
 
-      <div class="ai-chat-container">
-        <div class="ai-messages" id="aiMessages">
-          <div class="ai-message ai">
-            <div class="ai-bubble">Hi! 👋 I'm your AI tutor assistant. Ask me questions about bookings, pricing, grading, or platform policies!</div>
-          </div>
-        </div>
-
-        <div class="ai-suggestions" id="aiSuggestions">
-          <button class="ai-suggestion" onclick="askAI('How do I book a session?')">How do I book a session?</button>
-          <button class="ai-suggestion" onclick="askAI('What\\'s your pricing?')">What's your pricing?</button>
-          <button class="ai-suggestion" onclick="askAI('How does grading work?')">How does grading work?</button>
-          <button class="ai-suggestion" onclick="askAI('Can I get a refund?')">Can I get a refund?</button>
-        </div>
-
-        <div class="chat-input">
-          <input type="text" id="aiInput" placeholder="Ask AI a question..." />
-          <button class="btn btn-primary" onclick="sendAIMessage()">Send</button>
-        </div>
-      </div>
-    </div>
-  `;
-  UI.setContent(html);
-}
-
-const aiResponses = {
-  'book': 'To book a session: 1) Browse tutors, 2) Select dynamic subject categories or search profiles, 3) Click "Quick Book" or "View Profile", 4) Work through the 3-step form stepper, 5) Confirm booking. Simple and quick!',
-  'pricing': 'Tutor charges vary between $15 and $50/hour depending on experience level. Pre-filter by price using the sortBy dropdown!',
-  'grading': 'AI auto-grading evaluates uploaded assignments immediately. Scores are graded from 100, outlining clear strengths and potential improvements.',
-  'refund': 'Admins review disputes and approve refunds where sessions were cancelled or experienced technical difficulties. Feel free to request assistance.',
-  'contact': 'Reach our 24/7 help desk at support@aroosh.com or raise a ticket inside the platform.',
-  'payment': 'All credit/debit card, bank transfer, and PayPal transactions are fully encrypted.'
-};
-
-window.askAI = (question) => {
-  const messages = document.getElementById('aiMessages');
-  const input = document.getElementById('aiInput');
-  if (!messages) return;
-
-  const userMsg = document.createElement('div');
-  userMsg.className = 'ai-message user';
-  userMsg.innerHTML = `<div class="ai-bubble">${sanitize(question)}</div>`;
-  messages.appendChild(userMsg);
-
-  if (input) input.value = '';
-
-  const typingMsg = document.createElement('div');
-  typingMsg.className = 'ai-message ai';
-  typingMsg.innerHTML = `
-    <div class="ai-bubble">
-      <div class="ai-loading">
-        <div class="ai-spinner"></div>
-        <span>AI is analyzing...</span>
-      </div>
-    </div>
-  `;
-  messages.appendChild(typingMsg);
-  messages.scrollTop = messages.scrollHeight;
-
-  setTimeout(() => {
-    const lowerQ = question.toLowerCase();
-    let response = aiResponses['contact'];
-    
-    if (lowerQ.includes('book')) response = aiResponses['book'];
-    else if (lowerQ.includes('price') || lowerQ.includes('cost')) response = aiResponses['pricing'];
-    else if (lowerQ.includes('grade') || lowerQ.includes('grading')) response = aiResponses['grading'];
-    else if (lowerQ.includes('refund')) response = aiResponses['refund'];
-    else if (lowerQ.includes('payment')) response = aiResponses['payment'];
-
-    typingMsg.innerHTML = `<div class="ai-bubble">${response}</div>`;
-    const sug = document.getElementById('aiSuggestions');
-    if (sug) sug.style.display = 'none';
-    messages.scrollTop = messages.scrollHeight;
-  }, 1000);
-};
-
-window.sendAIMessage = () => {
-  const input = document.getElementById('aiInput');
-  if (input && input.value.trim()) {
-    window.askAI(input.value);
-  }
-};
-
-// PAGE 15: AI TUTOR MATCHING
-function renderAITutorMatching() {
-  const html = `
-    <div class="container" style="padding: 2rem 0;">
-      <h1 class="text-center mb-lg">AI Tutor Matching</h1>
-      <p class="text-center text-muted mb-2xl" style="max-width: 600px; margin-left: auto; margin-right: auto;">
-        Answer a few details to automatically match with the best tutor fit
-      </p>
-
-      <div class="grid-2">
-        <div class="card">
-          <form id="matchingQuiz">
-            <div class="form-group">
-              <label class="form-label">Preferred Learning Style</label>
-              <select class="form-select" required>
-                <option value="">Select style...</option>
-                <option value="Visual">Visual (diagrams, graphs, visual examples)</option>
-                <option value="Auditory">Auditory (discussions, oral explanations)</option>
-                <option value="Reading">Reading/Writing focused tutorials</option>
-                <option value="Kinesthetic">Kinesthetic (hands-on code, practical exercises)</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Subject</label>
-              <select class="form-select" required>
-                <option value="">Select subject...</option>
-                <option value="Math">Math</option>
-                <option value="English">English</option>
-                <option value="Science">Science</option>
-                <option value="History">History</option>
-                <option value="Languages">Languages</option>
-                <option value="Arts">Arts</option>
-                <option value="Technology">Technology</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Hourly Budget Limit ($)</label>
-              <input type="number" class="form-input" placeholder="30" min="10" max="150" required>
-            </div>
-
-            <button type="submit" class="btn btn-primary btn-lg btn-block">Find Best AI Match</button>
-          </form>
-        </div>
-
-        <div id="results" style="display: none;">
-          <h2>Matched Tutors</h2>
-          <div id="matchedTutors"></div>
-        </div>
-      </div>
-    </div>
-  `;
-  UI.setContent(html);
-
-  document.getElementById('matchingQuiz')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const tutors = appData.getTutors();
-    const resultsDiv = document.getElementById('results');
-    const form = document.getElementById('matchingQuiz').parentElement;
-
-    const matched = tutors.slice(0, 3).map((tutor, idx) => `
-      <div class="card mb-lg" style="border-left: 4px solid var(--color-success);">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-          <div>
-            <h3>${sanitize(tutor.name)}</h3>
-            <div style="font-size: 1.75rem; color: var(--color-success); font-weight: 800;">${95 - idx * 5}% Match</div>
-          </div>
-          <div style="font-size: 3rem;">${sanitize(tutor.avatar)}</div>
-        </div>
-        <p><strong>Reasoning:</strong> Matches your style with ${sanitize(tutor.yearsOfExperience)} years tutoring expertise.</p>
-        <p><strong>Rate:</strong> $${sanitize(tutor.hourlyRate)}/hr</p>
-        <div class="rating-display" style="margin-bottom: 1rem;">
-          ${UI.renderStars(Math.round(tutor.rating))}
-          <span class="rating-count">(${sanitize(tutor.totalReviews)} reviews)</span>
-        </div>
-        <button class="btn btn-primary btn-block" onclick="router.navigate('/tutors/${tutor.id}')">View Profile & Book</button>
-      </div>
-    `).join('');
-
-    form.style.display = 'none';
-    resultsDiv.innerHTML = `<h2 style="margin-bottom: 1.5rem;">Your Matched Tutors</h2>` + matched;
-    resultsDiv.style.display = 'block';
-  });
-}
-
-// PAGE 16: AI AUTO-GRADING
-function renderAIGrading() {
-  const html = `
-    <div class="container" style="padding: 2rem 0;">
-      <h1 class="mb-lg">AI Auto-Grading</h1>
-
-      <div class="grid-2">
-        <div>
-          <div class="card">
-            <h3 class="mb-lg">Upload Homework File</h3>
-            <div class="file-upload-area" id="dropZone" style="cursor: pointer; text-align: center; border: 2px dashed var(--color-muted); padding: 2rem; border-radius: var(--radius-lg);">
-              <div class="file-upload-icon" style="font-size: 3rem; margin-bottom: 0.5rem;">📄</div>
-              <p>Drop file here or click to upload (PDF, DOCX, TXT)</p>
-              <input type="file" id="fileInput" style="display: none;" accept=".pdf,.docx,.txt" />
-            </div>
-
-            <h3 class="mt-2xl mb-lg">Recent AI Autograded Submissions</h3>
-            <div class="assignment-list">
-              <div class="assignment-item" onclick="selectSubmission(0)">
-                <h4>Math Calculus Sheet</h4>
-                <p class="text-sm text-muted">Grade: 88/100</p>
-              </div>
-              <div class="assignment-item" onclick="selectSubmission(1)">
-                <h4>Science lab report</h4>
-                <p class="text-sm text-muted">Grade: 92/100</p>
-              </div>
-              <div class="assignment-item" onclick="selectSubmission(2)">
-                <h4>Literature Essay Draft</h4>
-                <p class="text-sm text-muted">Grade: 85/100</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div class="card" id="submissionDetail">
-            <div class="assignment-detail-empty">
-              <p>Select submission item to inspect AI grading summary</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-  UI.setContent(html);
-
-  const submissions = [
-    { title: 'Math Calculus Sheet', score: 88, strengths: ['Step-by-step working clearly documented', 'Correct trigonometric formulas used'], improvements: ['Minor arithmetic mistake in Q14', 'Provide explanations for visual graphs'] },
-    { title: 'Science lab report', score: 92, strengths: ['Excellent scientific analysis of data points', 'Pristine lab abstract and formatting'], improvements: ['Provide additional bibliographical references'] },
-    { title: 'Literature Essay Draft', score: 85, strengths: ['Strong thesis and introduction', 'Solid literary examples used'], improvements: ['Conclusion paragraph could be expanded', 'Double check spelling / proofread'] }
-  ];
-
-  window.selectSubmission = (idx) => {
-    const sub = submissions[idx];
-    const detail = document.getElementById('submissionDetail');
-    if (!detail) return;
-    detail.innerHTML = `
-      <h2 style="text-align: center; color: var(--color-primary); margin-bottom: 0.5rem; font-size: 3.5rem; font-weight: 800;">${sub.score}/100</h2>
-      <p style="text-align: center; color: var(--color-text-secondary); margin-bottom: 2rem;">Graded automatically by AI System</p>
-
-      <div style="margin-bottom: 2rem;">
-        <h3 style="color: #10B981; margin-bottom: 0.5rem;">✓ Major Strengths</h3>
-        ${sub.strengths.map(s => `<div style="padding: 0.25rem 0; font-size: 0.95rem;">• ${s}</div>`).join('')}
-      </div>
-
-      <div>
-        <h3 style="color: #f59e0b; margin-bottom: 0.5rem;">⚠️ Improvement Areas</h3>
-        ${sub.improvements.map(i => `<div style="padding: 0.25rem 0; font-size: 0.95rem;">• ${i}</div>`).join('')}
-      </div>
-    `;
-  };
-
-  const zone = document.getElementById('dropZone');
-  const input = document.getElementById('fileInput');
-  zone?.addEventListener('click', () => input?.click());
-  input?.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      UI.showAlert('File uploaded! AI grading is starting...', 'success');
-      setTimeout(() => {
-        UI.showAlert('AI Auto-grading complete! Grade: ' + Math.floor(Math.random() * 15 + 80) + '/100', 'success');
-      }, 1500);
-    }
-  });
-}
 
 // PAGE 17: ADMIN DASHBOARD
-function renderAdminDashboard() {
+async function renderAdminDashboard() {
+  if (!appData) {
+    console.error('[AdminDashboard] appData not initialized');
+    return;
+  }
   const user = appData.getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admin privilege required.', 'danger');
     router.navigate('/');
     return;
   }
 
-  const pendingApps = appData.getTutorApplications().filter(a => a.status === 'pending');
+  const tutorApplications = await appData.getTutorApplications() || [];
+  const pendingApps = tutorApplications.filter(a => a.status === 'pending');
+  const students = await appData.getStudents() || [];
+  const tutors = await appData.getTutors() || [];
+  const bookings = await appData.getBookings() || [];
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
@@ -3195,43 +3615,43 @@ function renderAdminDashboard() {
         <div class="kpi-card">
           <div class="kpi-icon">👥</div>
           <div class="kpi-content">
-            <h3>1,250</h3>
+            <h3>${students.length + tutors.length}</h3>
             <div class="kpi-label">Total Users</div>
           </div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon">👨‍🏫</div>
           <div class="kpi-content">
-            <h3>450</h3>
+            <h3>${tutors.length}</h3>
             <div class="kpi-label">Active Tutors</div>
           </div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon">📚</div>
           <div class="kpi-content">
-            <h3>8,932</h3>
+            <h3>${bookings.length}</h3>
             <div class="kpi-label">Total Bookings</div>
           </div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon">💰</div>
+          <div class="kpi-icon">👨‍🎓</div>
           <div class="kpi-content">
-            <h3>$125K</h3>
-            <div class="kpi-label">Total Revenue</div>
+            <h3>${students.length}</h3>
+            <div class="kpi-label">Total Students</div>
           </div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon">⭐</div>
           <div class="kpi-content">
-            <h3>4.8</h3>
+            <h3>${tutors.length > 0 ? (tutors.reduce((sum, t) => sum + (t.rating || 0), 0) / tutors.length).toFixed(1) : '0.0'}</h3>
             <div class="kpi-label">Avg Rating</div>
           </div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-icon">📈</div>
+          <div class="kpi-icon">📋</div>
           <div class="kpi-content">
-            <h3>+24%</h3>
-            <div class="kpi-label">Growth</div>
+            <h3>${pendingApps.length}</h3>
+            <div class="kpi-label">Pending Approvals</div>
           </div>
         </div>
       </div>
@@ -3240,27 +3660,15 @@ function renderAdminDashboard() {
         <div class="card">
           <h3 class="mb-lg">Recent Bookings</h3>
           <div>
-            <div class="session-item" style="margin-bottom: 1rem;">
-              <div class="session-info">
-                <div class="session-title">Math Session - Rahul & Priya</div>
-                <div class="session-meta"><span>2 hours ago</span></div>
+            ${bookings.length > 0 ? bookings.slice(0, 3).map(booking => `
+              <div class="session-item" style="margin-bottom: 1rem;">
+                <div class="session-info">
+                  <div class="session-title">${booking.subject} Session - ${booking.student?.name || 'Student'} & ${booking.tutor?.name || 'Tutor'}</div>
+                  <div class="session-meta"><span>${new Date(booking.created_at).toLocaleDateString()}</span></div>
+                </div>
+                <div>${UI.getStatusBadge(booking.status)}</div>
               </div>
-              <div>${UI.getStatusBadge('completed')}</div>
-            </div>
-            <div class="session-item" style="margin-bottom: 1rem;">
-              <div class="session-info">
-                <div class="session-title">English Session - Zara & Amit</div>
-                <div class="session-meta"><span>5 hours ago</span></div>
-              </div>
-              <div>${UI.getStatusBadge('confirmed')}</div>
-            </div>
-            <div class="session-item">
-              <div class="session-info">
-                <div class="session-title">Science Session - Vikram & Sophia</div>
-                <div class="session-meta"><span>1 day ago</span></div>
-              </div>
-              <div>${UI.getStatusBadge('completed')}</div>
-            </div>
+            `).join('') : '<p class="text-muted">No bookings yet</p>'}
           </div>
         </div>
 
@@ -3285,27 +3693,57 @@ function renderAdminDashboard() {
           </div>
         </div>
       </div>
+
+      <div class="card" style="margin-top: 2rem;">
+        <h3 class="mb-lg">All Students (${students.length})</h3>
+        <div>
+          ${students.length > 0 ? students.map(student => `
+            <div class="session-item" style="margin-bottom: 1rem;">
+              <div class="session-info">
+                <div class="session-title">${sanitize(student.name || 'Unnamed')}</div>
+                <div class="session-meta">
+                  <span>${sanitize(student.email || '—')}</span>
+                  ${student.gradeLevel ? `<span class="badge badge-secondary">${sanitize(student.gradeLevel)}</span>` : ''}
+                </div>
+              </div>
+              <button class="btn btn-sm btn-outline" onclick="router.navigate('/admin/manage-students')">Manage</button>
+            </div>
+          `).join('') : '<p class="text-muted">No students yet</p>'}
+        </div>
+      </div>
     </div>
   `;
   UI.setContent(html);
 }
 
-window.approveApplicationDashboard = (appId) => {
-  appData.approveTutorApplication(appId);
-  UI.showAlert('Application approved instantly! Tutor added to platform.', 'success');
-  renderAdminDashboard();
+window.approveApplicationDashboard = async (appId) => {
+  const result = await appData.approveTutorApplication(appId);
+  if (result?.success) {
+    UI.showAlert('Application approved! Tutor added to platform.', 'success');
+  } else {
+    UI.showAlert('Error approving application: ' + (result?.error || 'Unknown error'), 'danger');
+  }
+  await renderAdminDashboard();
 };
 
-window.rejectApplicationDashboard = (appId) => {
-  appData.rejectTutorApplication(appId);
-  UI.showAlert('Application rejected successfully.', 'warning');
-  renderAdminDashboard();
+window.rejectApplicationDashboard = async (appId) => {
+  const result = await appData.rejectTutorApplication(appId);
+  if (result) {
+    UI.showAlert('Application rejected successfully.', 'warning');
+  } else {
+    UI.showAlert('Error rejecting application.', 'danger');
+  }
+  await renderAdminDashboard();
 };
 
 // PAGE 18: ADMIN ANALYTICS
 function renderAdminAnalytics() {
+  if (!appData) {
+    console.error('[AdminAnalytics] appData not initialized');
+    return;
+  }
   const user = appData.getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admins Only!', 'danger');
     router.navigate('/');
     return;
@@ -3362,37 +3800,80 @@ function renderAdminAnalytics() {
   UI.setContent(html);
 }
 
-// PAGE 19: ADMIN TUTOR APPROVALS
-function renderAdminApprovals() {
+// PAGE 19: ADMIN APPROVALS (Sessions + Tutor Applications)
+async function renderAdminApprovals() {
+  if (!appData) { console.error('[AdminApprovals] appData not initialized'); return; }
   const user = appData.getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admins Only!', 'danger');
     router.navigate('/');
     return;
   }
 
-  const pendingApps = appData.getTutorApplications().filter(a => a.status === 'pending');
+  const [apps, allBookings] = await Promise.all([
+    appData.getTutorApplications(),
+    appData.getBookings()
+  ]);
+  const pendingApps = (apps || []).filter(a => a.status === 'pending');
+  const pendingBookings = (allBookings || []).filter(b => b.status === 'pending');
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
-      <h1 class="mb-lg">Tutor Applications</h1>
+      <div class="page-header-banner" style="margin-bottom: 2rem;">
+        <div style="position: relative; z-index: 1;">
+          <h1>Approvals</h1>
+          <p style="color: rgba(255,255,255,0.7); margin: 0;">Review and approve session requests and tutor applications</p>
+        </div>
+      </div>
 
-      <div class="grid-2">
-        <div>
-          <h3 class="mb-lg">Applications list</h3>
-          ${pendingApps.length > 0 ? pendingApps.map((app, idx) => `
-            <div class="approval-card card mb-md" onclick="selectApplication(${idx})" style="cursor: pointer; padding: 1rem;">
-              <div>
+      <!-- PENDING SESSION BOOKINGS -->
+      <div class="card" style="margin-bottom: 2rem;">
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.3rem; display: flex; align-items: center; gap: 0.5rem;">
+          <span style="width:10px;height:10px;background:var(--gradient-amber, linear-gradient(135deg,#d97706,#f59e0b));border-radius:50%;display:inline-block;"></span>
+          Pending Session Requests <span class="badge badge-warning" style="margin-left: 0.5rem;">${pendingBookings.length}</span>
+        </h2>
+        ${pendingBookings.length > 0 ? pendingBookings.map(b => `
+          <div class="session-item" style="margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+            <div style="flex: 1; min-width: 200px;">
+              <div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.4rem;">${sanitize(b.subject || 'Session')}</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.9rem;">
+                <span>👨‍🎓 <strong>${b.student?.name || sanitize(b.student_id || 'Student')}</strong></span>
+                <span>•</span>
+                <span>👩‍🏫 <strong>${b.tutor?.name || sanitize(b.tutor_id || 'Tutor')}</strong></span>
+              </div>
+              <div style="font-size: 0.85rem; color: var(--color-text-secondary);">
+                📅 ${b.scheduled_at ? new Date(b.scheduled_at).toLocaleString() : 'Time not set'}
+                ${b.duration ? ` • ⏱ ${b.duration} min` : ''}
+              </div>
+              ${b.notes ? `<p style="margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--color-text-secondary);">${sanitize(b.notes)}</p>` : ''}
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-direction: column; min-width: 120px;">
+              <button class="btn btn-sm btn-success" onclick="approveBookingRequest('${b.id}')">✓ Approve</button>
+              <button class="btn btn-sm btn-danger" onclick="rejectBookingRequest('${b.id}')">✕ Reject</button>
+            </div>
+          </div>
+        `).join('') : '<p class="text-muted" style="padding: 1rem 0;">No pending session requests.</p>'}
+      </div>
+
+      <!-- TUTOR APPLICATIONS -->
+      <div class="card">
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.3rem; display: flex; align-items: center; gap: 0.5rem;">
+          <span style="width:10px;height:10px;background:linear-gradient(135deg,#8a307f,#a855a0);border-radius:50%;display:inline-block;"></span>
+          Tutor Applications <span class="badge badge-primary" style="margin-left: 0.5rem;">${pendingApps.length}</span>
+        </h2>
+        <div class="grid-2">
+          <div>
+            ${pendingApps.length > 0 ? pendingApps.map((app, idx) => `
+              <div class="approval-card card mb-md" onclick="selectApplication(${idx})" style="cursor: pointer; padding: 1rem; margin-bottom: 0.75rem;">
                 <div class="approval-name" style="font-weight: 700;">${sanitize(app.name)}</div>
                 <div class="approval-email text-muted" style="font-size: 0.85rem;">${sanitize(app.email)}</div>
+                <div style="margin-top: 0.5rem;">${UI.getStatusBadge(app.status)}</div>
               </div>
-              <div style="margin-top: 0.5rem;">${UI.getStatusBadge(app.status)}</div>
-            </div>
-          `).join('') : '<p class="text-muted">No pending tutor applications.</p>'}
-        </div>
-
-        <div id="appDetail" class="card">
-          <div class="assignment-detail-empty"><p>Select an application to view detailed credentials</p></div>
+            `).join('') : '<p class="text-muted">No pending tutor applications.</p>'}
+          </div>
+          <div id="appDetail" class="card">
+            <div class="assignment-detail-empty"><p>Select an application to view details</p></div>
+          </div>
         </div>
       </div>
     </div>
@@ -3410,155 +3891,288 @@ function renderAdminApprovals() {
         <p><strong>Email:</strong> ${sanitize(app.email)}</p>
         <p><strong>Experience:</strong> ${sanitize(app.experience)}</p>
         <p><strong>Qualifications:</strong> ${sanitize(app.qualifications)}</p>
-        <p><strong>Hourly Rate:</strong> $${sanitize(app.hourlyRate)}/hr</p>
       </div>
       <div style="margin: 1.5rem 0;">
         <strong>Subjects:</strong>
-        <div style="margin-top: 0.5rem;">
-          ${app.subjects.map(s => `<span class="subject-tag">${sanitize(s)}</span>`).join('')}
-        </div>
+        <div style="margin-top: 0.5rem;">${(app.subjects || []).map(s => `<span class="subject-tag">${sanitize(s)}</span>`).join('')}</div>
       </div>
       <div style="margin: 1.5rem 0;">
-        <strong>Tutor Bio Statement:</strong>
+        <strong>Bio Statement:</strong>
         <p>${sanitize(app.bio)}</p>
       </div>
       <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-        <button class="btn btn-success" style="flex: 1;" onclick="approveApplication('${app.id}')">Approve Application</button>
+        <button class="btn btn-success" style="flex: 1;" onclick="approveApplication('${app.id}')">Approve</button>
         <button class="btn btn-danger" style="flex: 1;" onclick="rejectApplication('${app.id}')">Reject</button>
       </div>
     `;
   };
 }
 
-window.approveApplication = (appId) => {
-  appData.approveTutorApplication(appId);
-  UI.showAlert('Application approved successfully!', 'success');
-  renderAdminApprovals();
+window.approveBookingRequest = async (bookingId) => {
+  const result = await appData.updateBookingStatus(bookingId, 'confirmed');
+  if (result) { UI.showAlert('Session approved! Both parties notified.', 'success'); await renderAdminApprovals(); }
+  else UI.showAlert('Failed to approve session.', 'danger');
 };
 
-window.rejectApplication = (appId) => {
-  appData.rejectTutorApplication(appId);
-  UI.showAlert('Application rejected.', 'warning');
-  renderAdminApprovals();
+window.rejectBookingRequest = async (bookingId) => {
+  if (confirm('Reject this session request?')) {
+    const result = await appData.updateBookingStatus(bookingId, 'cancelled');
+    if (result) { UI.showAlert('Session rejected.', 'warning'); await renderAdminApprovals(); }
+    else UI.showAlert('Failed to reject session.', 'danger');
+  }
 };
 
-// PAGE 20: ADMIN DISPUTES
-function renderAdminDisputes() {
+window.approveApplication = async (appId) => {
+  const result = await appData.approveTutorApplication(appId);
+  if (result?.success) { UI.showAlert('Application approved!', 'success'); }
+  else { UI.showAlert('Error approving: ' + (result?.error || 'Unknown'), 'danger'); }
+  await renderAdminApprovals();
+};
+
+window.rejectApplication = async (appId) => {
+  const result = await appData.rejectTutorApplication(appId);
+  if (result) { UI.showAlert('Application rejected.', 'warning'); }
+  else { UI.showAlert('Error rejecting application.', 'danger'); }
+  await renderAdminApprovals();
+};
+
+// PAGE 20: ADMIN SESSIONS
+async function renderAdminSessions() {
+  if (!appData) {
+    console.error('[AdminSessions] appData not initialized');
+    return;
+  }
   const user = appData.getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admins Only!', 'danger');
     router.navigate('/');
     return;
   }
 
-  const disputes = appData.getDisputesList();
-  const refunds = appData.getRefundsList();
+  const bookings = await appData.getBookings() || [];
+  const students = await appData.getStudents() || [];
+  const tutors = await appData.getTutors() || [];
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
-      <h1 class="mb-lg">Disputes & Refunds</h1>
+      <h1 class="mb-lg">Manage Sessions</h1>
 
-      <div class="tab-container">
-        <button class="tab active" onclick="switchDisputeTab(0)">Disputes (${disputes.length})</button>
-        <button class="tab" onclick="switchDisputeTab(1)">Refunds (${refunds.length})</button>
+      <div class="card" style="margin-bottom: 2rem;">
+        <h3 class="mb-lg">Create New Session</h3>
+        <form id="createSessionForm">
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Student</label>
+              <select class="form-input" id="sessionStudent" required>
+                <option value="">Select Student</option>
+                ${students.map(s => `<option value="${s.id}">${sanitize(s.name)} (${sanitize(s.email)})</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tutor</label>
+              <select class="form-input" id="sessionTutor" required>
+                <option value="">Select Tutor</option>
+                ${tutors.map(t => `<option value="${t.id}">${sanitize(t.name)} (${sanitize(t.email)})</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Subject</label>
+              <input type="text" class="form-input" id="sessionSubject" placeholder="e.g., Math, Science" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Duration (minutes)</label>
+              <input type="number" class="form-input" id="sessionDuration" value="60" min="30" step="30" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Scheduled Date & Time</label>
+            <input type="datetime-local" class="form-input" id="sessionDateTime" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Notes</label>
+            <textarea class="form-textarea" id="sessionNotes" rows="3" placeholder="Any additional notes..."></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Create Session</button>
+        </form>
       </div>
 
-      <div id="disputeTab" class="tab-content active">
-        ${disputes.map(dispute => `
-          <div class="card mb-lg" style="padding: 1.5rem; border-left: 4px solid var(--color-primary);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-              <div>
-                <h3 style="margin: 0;">${sanitize(dispute.caseNumber)}</h3>
-                <p class="text-muted" style="margin: 0; font-size: 0.85rem;">Filed: ${sanitize(dispute.filedDate)}</p>
+      <div class="card">
+        <h3 class="mb-lg">All Sessions (${bookings.length})</h3>
+        ${bookings.length > 0 ? bookings.map(booking => `
+          <div class="session-item" style="margin-bottom: 1rem;">
+            <div class="session-info">
+              <div class="session-title">${sanitize(booking.subject)} - ${booking.student?.name || 'Student'} & ${booking.tutor?.name || 'Tutor'}</div>
+              <div class="session-meta">
+                <span>${new Date(booking.scheduled_at).toLocaleString()}</span>
+                <span>${booking.duration} min</span>
               </div>
-              <div>${UI.getStatusBadge(dispute.status)}</div>
+              ${booking.notes ? `<p class="text-muted" style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">${sanitize(booking.notes)}</p>` : ''}
             </div>
-            <div style="background-color: var(--color-background); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid var(--color-muted);">
-              <p style="margin-bottom: 0.25rem;"><strong>Claimed:</strong> $${sanitize(dispute.claimedAmount)}</p>
-              <p style="margin-bottom: 0.25rem;"><strong>Student:</strong> ${sanitize(dispute.studentName)}</p>
-              <p style="margin-bottom: 0.25rem;"><strong>Tutor:</strong> ${sanitize(dispute.tutorName)}</p>
-              <p style="margin-bottom: 0.25rem;"><strong>Reason:</strong> ${sanitize(dispute.reason)}</p>
-              <p style="margin: 0;"><strong>Description:</strong> ${sanitize(dispute.description)}</p>
+            <div style="display: flex; gap: 0.5rem; flex-direction: column;">
+              <div>${UI.getStatusBadge(booking.status)}</div>
+              <button class="btn btn-sm btn-outline" onclick="editSessionAdmin('${booking.id}')">✏️ Edit</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteSessionAdmin('${booking.id}')">🗑 Delete</button>
+              ${booking.status === 'pending' ? `
+                <button class="btn btn-sm btn-success" onclick="approveSession('${booking.id}')">✓ Approve</button>
+              ` : ''}
             </div>
-            ${dispute.status === 'open' ? `
-              <div style="display: flex; gap: 0.5rem;">
-                <button class="btn btn-sm btn-success" onclick="resolveDispute('${dispute.id}', 'approve')">Approve & Refund</button>
-                <button class="btn btn-sm btn-danger" onclick="resolveDispute('${dispute.id}', 'reject')">Reject Dispute</button>
-              </div>
-            ` : `
-              <p style="margin: 0; font-size: 0.9rem;"><strong>Resolution:</strong> ${sanitize(dispute.resolution)}</p>
-            `}
           </div>
-        `).join('')}
-      </div>
-
-      <div id="refundTab" class="tab-content">
-        ${refunds.map(refund => `
-          <div class="card mb-lg" style="padding: 1.5rem; border-left: 4px solid var(--color-primary);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-              <div>
-                <h3 style="margin: 0;">${sanitize(refund.studentName)}</h3>
-                <p class="text-muted" style="margin: 0; font-size: 0.85rem;">Session: ${sanitize(refund.sessionDate)}</p>
-              </div>
-              <div>${UI.getStatusBadge(refund.status)}</div>
-            </div>
-            <div style="background-color: var(--color-background); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid var(--color-muted);">
-              <p style="margin-bottom: 0.25rem;"><strong>Amount:</strong> $${sanitize(refund.amount)}</p>
-              <p style="margin: 0;"><strong>Reason:</strong> ${sanitize(refund.reason)}</p>
-            </div>
-            ${refund.status === 'pending' ? `
-              <div style="display: flex; gap: 0.5rem;">
-                <button class="btn btn-sm btn-success" onclick="approveRefund('${refund.id}')">Approve</button>
-                <button class="btn btn-sm btn-danger" onclick="rejectRefund('${refund.id}')">Reject</button>
-              </div>
-            ` : ''}
-          </div>
-        `).join('')}
+        `).join('') : '<p class="text-muted">No sessions yet</p>'}
       </div>
     </div>
   `;
   UI.setContent(html);
+
+  document.getElementById('createSessionForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const studentId = document.getElementById('sessionStudent').value;
+    const tutorId = document.getElementById('sessionTutor').value;
+    const subject = document.getElementById('sessionSubject').value;
+    const duration = parseInt(document.getElementById('sessionDuration').value);
+    const scheduledAt = document.getElementById('sessionDateTime').value;
+    const notes = document.getElementById('sessionNotes').value;
+
+    const booking = {
+      student_id: studentId,
+      tutor_id: tutorId,
+      subject,
+      duration,
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      notes,
+      status: 'pending'
+    };
+
+    const result = await appData.addBooking(booking);
+    if (result) {
+      UI.showAlert('Session created successfully! Waiting for admin approval.', 'success');
+      renderAdminSessions();
+    } else {
+      UI.showAlert('Failed to create session.', 'danger');
+    }
+  });
 }
 
-window.switchDisputeTab = (tabIndex) => {
-  const tabs = document.querySelectorAll('.tab');
-  const contents = document.querySelectorAll('.tab-content');
-  tabs.forEach((t, i) => t.classList.toggle('active', i === tabIndex));
-  contents.forEach((c, i) => c.classList.toggle('active', i === tabIndex));
+window.approveSession = async (bookingId) => {
+  const result = await appData.updateBookingStatus(bookingId, 'confirmed');
+  if (result) {
+    UI.showAlert('Session approved! Student and tutor have been notified.', 'success');
+    renderAdminSessions();
+  } else {
+    UI.showAlert('Failed to approve session.', 'danger');
+  }
 };
 
-window.resolveDispute = (id, action) => {
-  const status = action === 'approve' ? 'resolved' : 'rejected';
-  const resolution = action === 'approve' ? 'Refund Approved' : 'Dispute Rejected';
-  appData.updateDisputeStatus(id, status, resolution);
-  const msg = action === 'approve' ? 'Dispute resolved - refund approved!' : 'Dispute rejected.';
-  UI.showAlert(msg, action === 'approve' ? 'success' : 'warning');
-  renderAdminDisputes();
+
+window.editSessionAdmin = async (bookingId) => {
+  const bookings = await appData.getBookings() || [];
+  const b = bookings.find(x => x.id === bookingId);
+  if (!b) return;
+  const students = await appData.getStudents() || [];
+  const tutors = await appData.getTutors() || [];
+  const scheduledVal = b.scheduled_at ? new Date(b.scheduled_at).toISOString().slice(0,16) : '';
+  const html = `
+    <form id="editSessionAdminForm">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Student</label>
+          <select class="form-input" id="eSStudent">
+            ${students.map(s => `<option value="${s.id}" ${s.id === (b.student_id||b.studentId) ? 'selected' : ''}>${sanitize(s.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tutor</label>
+          <select class="form-input" id="eSTutor">
+            ${tutors.map(t => `<option value="${t.id}" ${t.id === (b.tutor_id||b.tutorId) ? 'selected' : ''}>${sanitize(t.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Subject</label>
+          <input type="text" class="form-input" id="eSSubject" value="${sanitize(b.subject||'')}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duration (min)</label>
+          <input type="number" class="form-input" id="eSDuration" value="${b.duration||60}" min="30" step="30">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Scheduled At</label>
+          <input type="datetime-local" class="form-input" id="eSDateTime" value="${scheduledVal}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-input" id="eSStatus">
+            <option value="pending" ${b.status==='pending'?'selected':''}>Pending</option>
+            <option value="confirmed" ${b.status==='confirmed'?'selected':''}>Confirmed</option>
+            <option value="completed" ${b.status==='completed'?'selected':''}>Completed</option>
+            <option value="cancelled" ${b.status==='cancelled'?'selected':''}>Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="eSNotes" rows="2">${sanitize(b.notes||'')}</textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+    </form>
+  `;
+  const modal = UI.showModal(html, 'Edit Session');
+  document.getElementById('editSessionAdminForm')?.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const updates = {
+      student_id: document.getElementById('eSStudent').value,
+      tutor_id: document.getElementById('eSTutor').value,
+      subject: document.getElementById('eSSubject').value,
+      duration: parseInt(document.getElementById('eSDuration').value),
+      scheduled_at: new Date(document.getElementById('eSDateTime').value).toISOString(),
+      status: document.getElementById('eSStatus').value,
+      notes: document.getElementById('eSNotes').value
+    };
+    const result = await appData.updateBooking(bookingId, updates);
+    if (result) { UI.showAlert('Session updated!', 'success'); modal.remove(); await renderAdminSessions(); }
+    else UI.showAlert('Failed to update session.', 'danger');
+  });
 };
 
-window.approveRefund = (id) => {
-  appData.updateRefundStatus(id, 'approved');
-  UI.showAlert('Refund successfully approved!', 'success');
-  renderAdminDisputes();
+window.deleteSessionAdmin = async (bookingId) => {
+  if (confirm('Permanently delete this session?')) {
+    const result = await appData.deleteBooking(bookingId);
+    if (result?.success) { UI.showAlert('Session deleted.', 'success'); await renderAdminSessions(); }
+    else UI.showAlert('Failed to delete session.', 'danger');
+  }
 };
 
-window.rejectRefund = (id) => {
-  appData.updateRefundStatus(id, 'rejected');
-  UI.showAlert('Refund rejected.', 'warning');
-  renderAdminDisputes();
+window.cancelSession = async (bookingId) => {
+  if (confirm('Are you sure you want to cancel this session?')) {
+    const result = await appData.updateBookingStatus(bookingId, 'cancelled');
+    if (result) {
+      UI.showAlert('Session cancelled! Student and tutor have been notified.', 'warning');
+      renderAdminSessions();
+    } else {
+      UI.showAlert('Failed to cancel session.', 'danger');
+    }
+  }
 };
 
 // PAGE 21: ADMIN ANNOUNCEMENTS & POSTS
-function renderAdminAnnouncements() {
+async function renderAdminAnnouncements() {
+  if (!appData) {
+    console.error('[AdminAnnouncements] appData not initialized');
+    return;
+  }
   const user = appData.getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admins Only!', 'danger');
     router.navigate('/');
     return;
   }
 
-  const announcements = appData.getAllAnnouncements();
-  const posts = appData.getAllPosts();
+  const announcements = await appData.getAllAnnouncements() || [];
+  const posts = await appData.getAllPosts() || [];
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
@@ -3601,7 +4215,7 @@ function renderAdminAnnouncements() {
               <div class="session-info">
                 <div class="session-title">${sanitize(ann.title)}</div>
                 <div class="session-meta">
-                  <span>${new Date(ann.createdAt).toLocaleDateString()}</span>
+                  <span>${new Date(ann.created_at || ann.createdAt).toLocaleDateString()}</span>
                   <span class="badge badge-${ann.priority === 'high' ? 'danger' : ann.priority === 'medium' ? 'warning' : 'success'}">${ann.priority}</span>
                   <span class="badge badge-${ann.isActive ? 'success' : 'secondary'}">${ann.isActive ? 'Active' : 'Inactive'}</span>
                 </div>
@@ -3655,7 +4269,7 @@ function renderAdminAnnouncements() {
               <div class="session-info">
                 <div class="session-title">${sanitize(post.title)}</div>
                 <div class="session-meta">
-                  <span>${new Date(post.createdAt).toLocaleDateString()}</span>
+                  <span>${new Date(post.created_at || post.createdAt).toLocaleDateString()}</span>
                   <span class="badge badge-secondary">${sanitize(post.category)}</span>
                   <span class="badge badge-${post.isActive ? 'success' : 'secondary'}">${post.isActive ? 'Active' : 'Inactive'}</span>
                   ${post.mediaType ? `<span class="badge badge-primary">📎 Media</span>` : ''}
@@ -3683,7 +4297,7 @@ function renderAdminAnnouncements() {
   `;
   UI.setContent(html);
 
-  document.getElementById('announcementForm')?.addEventListener('submit', (e) => {
+  document.getElementById('announcementForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const announcement = {
       title: document.getElementById('announcementTitle').value,
@@ -3693,9 +4307,9 @@ function renderAdminAnnouncements() {
       createdBy: user.id,
       isActive: true
     };
-    appData.addAnnouncement(announcement);
+    await appData.addAnnouncement(announcement);
     UI.showAlert('Announcement created!', 'success');
-    renderAdminAnnouncements();
+    await renderAdminAnnouncements();
   });
 
   document.getElementById('postForm')?.addEventListener('submit', async (e) => {
@@ -3705,12 +4319,10 @@ function renderAdminAnnouncements() {
     let mediaType = null;
 
     if (mediaFile) {
-      const reader = new FileReader();
-      mediaUrl = await new Promise((resolve) => {
-        reader.onload = (e) => resolve(e.target.result);
-        reader.readAsDataURL(mediaFile);
-      });
+      UI.showAlert('Uploading file...', 'success');
+      mediaUrl = await uploadToCloudinary(mediaFile, 'Aroosh Online Tutors/posts');
       mediaType = mediaFile.type;
+      if (!mediaUrl) { return; } // Upload failed, error shown by uploadToCloudinary
     }
 
     const post = {
@@ -3723,9 +4335,9 @@ function renderAdminAnnouncements() {
       createdBy: user.id,
       isActive: true
     };
-    appData.addPost(post);
+    await appData.addPost(post);
     UI.showAlert('Post created!', 'success');
-    renderAdminAnnouncements();
+    await renderAdminAnnouncements();
   });
 }
 
@@ -3736,8 +4348,8 @@ window.switchAnnouncementTab = (tabIndex) => {
   contents.forEach((c, i) => c.classList.toggle('active', i === tabIndex));
 };
 
-window.toggleAnnouncement = (id) => {
-  const announcements = appData.getAllAnnouncements();
+window.toggleAnnouncement = async (id) => {
+  const announcements = await appData.getAllAnnouncements() || [];
   const ann = announcements.find(a => a.id === id);
   if (ann) {
     appData.updateAnnouncement(id, { isActive: !ann.isActive });
@@ -3746,16 +4358,16 @@ window.toggleAnnouncement = (id) => {
   }
 };
 
-window.deleteAnnouncement = (id) => {
+window.deleteAnnouncement = async (id) => {
   if (confirm('Are you sure you want to delete this announcement?')) {
-    appData.deleteAnnouncement(id);
+    await appData.deleteAnnouncement(id);
     UI.showAlert('Announcement deleted!', 'success');
     renderAdminAnnouncements();
   }
 };
 
-window.editAnnouncement = (id) => {
-  const announcements = appData.getAllAnnouncements();
+window.editAnnouncement = async (id) => {
+  const announcements = await appData.getAllAnnouncements() || [];
   const ann = announcements.find(a => a.id === id);
   if (ann) {
     const html = `
@@ -3797,8 +4409,8 @@ window.editAnnouncement = (id) => {
   }
 };
 
-window.togglePost = (id) => {
-  const posts = appData.getAllPosts();
+window.togglePost = async (id) => {
+  const posts = await appData.getAllPosts() || [];
   const post = posts.find(p => p.id === id);
   if (post) {
     appData.updatePost(id, { isActive: !post.isActive });
@@ -3807,16 +4419,16 @@ window.togglePost = (id) => {
   }
 };
 
-window.deletePost = (id) => {
+window.deletePost = async (id) => {
   if (confirm('Are you sure you want to delete this post?')) {
-    appData.deletePost(id);
+    await appData.deletePost(id);
     UI.showAlert('Post deleted!', 'success');
     renderAdminAnnouncements();
   }
 };
 
-window.editPost = (id) => {
-  const posts = appData.getAllPosts();
+window.editPost = async (id) => {
+  const posts = await appData.getAllPosts() || [];
   const post = posts.find(p => p.id === id);
   if (post) {
     const html = `
@@ -3865,12 +4477,9 @@ window.editPost = (id) => {
       let mediaType = post.mediaType;
 
       if (mediaFile) {
-        const reader = new FileReader();
-        mediaUrl = await new Promise((resolve) => {
-          reader.onload = (e) => resolve(e.target.result);
-          reader.readAsDataURL(mediaFile);
-        });
+        mediaUrl = await uploadToCloudinary(mediaFile, 'Aroosh Online Tutors/posts');
         mediaType = mediaFile.type;
+        if (!mediaUrl) { return; }
       }
 
       appData.updatePost(id, {
@@ -3887,8 +4496,8 @@ window.editPost = (id) => {
   }
 };
 
-window.removePostMedia = (id) => {
-  appData.updatePost(id, { mediaType: null, mediaUrl: null });
+window.removePostMedia = async (id) => {
+  await appData.updatePost(id, { mediaType: null, mediaUrl: null });
   UI.showAlert('Media removed!', 'success');
   const modal = document.querySelector('.modal-overlay');
   if (modal) modal.remove();
@@ -3896,15 +4505,19 @@ window.removePostMedia = (id) => {
 };
 
 // PAGE 22: ADMIN FEEDBACK
-function renderAdminFeedback() {
+async function renderAdminFeedback() {
+  if (!appData) {
+    console.error('[AdminFeedback] appData not initialized');
+    return;
+  }
   const user = appData.getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admins Only!', 'danger');
     router.navigate('/');
     return;
   }
 
-  const feedback = appData.getFeedback();
+  const feedback = await appData.getFeedback() || [];
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
@@ -3918,7 +4531,7 @@ function renderAdminFeedback() {
               <div class="session-title">${sanitize(fb.subject)}</div>
               <div class="session-meta">
                 <span>${sanitize(fb.userName)}</span>
-                <span>${new Date(fb.createdAt).toLocaleDateString()}</span>
+                <span>${new Date(fb.created_at || fb.createdAt).toLocaleDateString()}</span>
                 <span class="badge badge-${fb.type === 'bug' ? 'danger' : 'secondary'}">${fb.type}</span>
                 <span class="badge badge-${fb.status === 'pending' ? 'warning' : fb.status === 'resolved' ? 'success' : 'secondary'}">${fb.status}</span>
               </div>
@@ -3940,8 +4553,8 @@ function renderAdminFeedback() {
   UI.setContent(html);
 }
 
-window.respondToFeedback = (id) => {
-  const feedback = appData.getFeedback();
+window.respondToFeedback = async (id) => {
+  const feedback = await appData.getFeedback() || [];
   const fb = feedback.find(f => f.id === id);
   if (fb) {
     const html = `
@@ -3958,40 +4571,44 @@ window.respondToFeedback = (id) => {
       </div>
     `;
     const modal = UI.showModal(html, 'Respond to Feedback');
-    document.getElementById('feedbackResponseForm')?.addEventListener('submit', (e) => {
+    document.getElementById('feedbackResponseForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      appData.updateFeedbackStatus(id, 'resolved', document.getElementById('feedbackResponse').value);
+      await appData.updateFeedbackStatus(id, 'resolved', document.getElementById('feedbackResponse').value);
       UI.showAlert('Response sent!', 'success');
       modal.remove();
-      renderAdminFeedback();
+      await renderAdminFeedback();
     });
   }
 };
 
-window.resolveFeedback = (id) => {
-  appData.updateFeedbackStatus(id, 'resolved');
+window.resolveFeedback = async (id) => {
+  await appData.updateFeedbackStatus(id, 'resolved');
   UI.showAlert('Feedback marked as resolved!', 'success');
   renderAdminFeedback();
 };
 
-window.deleteFeedback = (id) => {
+window.deleteFeedback = async (id) => {
   if (confirm('Are you sure you want to delete this feedback?')) {
-    appData.deleteFeedback(id);
+    await appData.deleteFeedback(id);
     UI.showAlert('Feedback deleted!', 'success');
     renderAdminFeedback();
   }
 };
 
 // PAGE 23: ADMIN MANAGE TUTORS
-function renderAdminManageTutors() {
+async function renderAdminManageTutors() {
+  if (!appData) {
+    console.error('[AdminManageTutors] appData not initialized');
+    return;
+  }
   const user = appData.getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admins Only!', 'danger');
     router.navigate('/');
     return;
   }
 
-  const tutors = appData.getTutors();
+  const tutors = await appData.getTutors() || [];
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
@@ -4014,15 +4631,9 @@ function renderAdminManageTutors() {
             <label class="form-label">Bio</label>
             <textarea class="form-textarea" id="tutorBio" rows="3" required></textarea>
           </div>
-          <div class="grid-2">
-            <div class="form-group">
-              <label class="form-label">Qualifications</label>
-              <input type="text" class="form-input" id="tutorQualifications" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Hourly Rate ($)</label>
-              <input type="number" class="form-input" id="tutorRate" required>
-            </div>
+          <div class="form-group">
+            <label class="form-label">Qualifications</label>
+            <input type="text" class="form-input" id="tutorQualifications" required>
           </div>
           <div class="grid-2">
             <div class="form-group">
@@ -4055,8 +4666,7 @@ function renderAdminManageTutors() {
               <div class="session-meta">
                 <span>${sanitize(tutor.email)}</span>
                 <span class="badge badge-secondary">${tutor.experienceLevel}</span>
-                <span class="badge badge-${tutor.isAvailable ? 'success' : 'danger'}">${tutor.isAvailable ? 'Available' : 'Unavailable'}</span>
-                <span>$${tutor.hourlyRate}/hr</span>
+                <span class="badge badge-${(tutor.is_available ?? tutor.isAvailable ?? true) ? 'success' : 'danger'}">${(tutor.is_available ?? tutor.isAvailable ?? true) ? 'Available' : 'Unavailable'}</span>
               </div>
               <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.9rem;">${sanitize(tutor.bio)}</p>
               <div style="margin-top: 0.5rem;">
@@ -4065,7 +4675,7 @@ function renderAdminManageTutors() {
             </div>
             <div style="display: flex; gap: 0.5rem; flex-direction: column;">
               <button class="btn btn-sm btn-outline" onclick="editTutor('${tutor.id}')">Edit</button>
-              <button class="btn btn-sm btn-outline" onclick="toggleTutorAvailability('${tutor.id}')">${tutor.isAvailable ? 'Set Unavailable' : 'Set Available'}</button>
+              <button class="btn btn-sm btn-outline" onclick="toggleTutorAvailability('${tutor.id}')">${(tutor.is_available ?? tutor.isAvailable ?? true) ? 'Set Unavailable' : 'Set Available'}</button>
               <button class="btn btn-sm btn-danger" onclick="deleteUser('${tutor.id}')">Delete</button>
             </div>
           </div>
@@ -4075,32 +4685,40 @@ function renderAdminManageTutors() {
   `;
   UI.setContent(html);
 
-  document.getElementById('addTutorForm')?.addEventListener('submit', (e) => {
+  document.getElementById('addTutorForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const tutor = {
-      name: document.getElementById('tutorName').value,
-      email: document.getElementById('tutorEmail').value,
-      bio: document.getElementById('tutorBio').value,
-      qualifications: document.getElementById('tutorQualifications').value,
-      hourlyRate: parseInt(document.getElementById('tutorRate').value),
-      yearsOfExperience: parseInt(document.getElementById('tutorExperience').value),
-      experienceLevel: document.getElementById('tutorLevel').value,
-      subjects: document.getElementById('tutorSubjects').value.split(',').map(s => s.trim()),
-      role: 'tutor',
-      avatar: '👨‍🏫',
-      rating: 5.0,
-      totalReviews: 0,
-      isAvailable: true,
-      availability: []
-    };
-    appData.addUser(tutor);
-    UI.showAlert('Tutor added successfully!', 'success');
-    renderAdminManageTutors();
+    try {
+      const tutor = {
+        name: document.getElementById('tutorName').value,
+        email: document.getElementById('tutorEmail').value,
+        bio: document.getElementById('tutorBio').value,
+        qualifications: document.getElementById('tutorQualifications').value,
+        yearsOfExperience: parseInt(document.getElementById('tutorExperience').value),
+        experienceLevel: document.getElementById('tutorLevel').value,
+        subjects: document.getElementById('tutorSubjects').value.split(',').map(s => s.trim()),
+        role: 'tutor',
+        avatar: '👨‍🏫',
+        rating: 5.0,
+        totalReviews: 0,
+        isAvailable: true,
+        availability: []
+      };
+      const result = await appData.addUser(tutor);
+      if (result) {
+        UI.showAlert('Tutor added successfully!', 'success');
+        await renderAdminManageTutors();
+      } else {
+        UI.showAlert('Error adding tutor. Please try again.', 'danger');
+      }
+    } catch (error) {
+      console.error('Error in addTutorForm:', error);
+      UI.showAlert('Error: ' + error.message, 'danger');
+    }
   });
 }
 
-window.editTutor = (id) => {
-  const tutor = appData.getTutorById(id);
+window.editTutor = async (id) => {
+  const tutor = await appData.getTutorById(id);
   if (tutor) {
     const html = `
       <div>
@@ -4120,20 +4738,14 @@ window.editTutor = (id) => {
             <label class="form-label">Bio</label>
             <textarea class="form-textarea" id="editTutorBio" rows="3" required>${sanitize(tutor.bio)}</textarea>
           </div>
-          <div class="grid-2">
-            <div class="form-group">
-              <label class="form-label">Qualifications</label>
-              <input type="text" class="form-input" id="editTutorQualifications" value="${sanitize(tutor.qualifications)}" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Hourly Rate ($)</label>
-              <input type="number" class="form-input" id="editTutorRate" value="${tutor.hourlyRate}" required>
-            </div>
+          <div class="form-group">
+            <label class="form-label">Qualifications</label>
+            <input type="text" class="form-input" id="editTutorQualifications" value="${sanitize(tutor.qualifications)}" required>
           </div>
           <div class="grid-2">
             <div class="form-group">
               <label class="form-label">Years of Experience</label>
-              <input type="number" class="form-input" id="editTutorExperience" value="${tutor.yearsOfExperience}" required>
+              <input type="number" class="form-input" id="editTutorExperience" value="${(tutor.years_of_experience ?? tutor.yearsOfExperience ?? 0)}" required>
             </div>
             <div class="form-group">
               <label class="form-label">Experience Level</label>
@@ -4153,52 +4765,87 @@ window.editTutor = (id) => {
       </div>
     `;
     const modal = UI.showModal(html, 'Edit Tutor');
-    document.getElementById('editTutorForm')?.addEventListener('submit', (e) => {
+    document.getElementById('editTutorForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      appData.updateUser(id, {
-        name: document.getElementById('editTutorName').value,
-        email: document.getElementById('editTutorEmail').value,
-        bio: document.getElementById('editTutorBio').value,
-        qualifications: document.getElementById('editTutorQualifications').value,
-        hourlyRate: parseInt(document.getElementById('editTutorRate').value),
-        yearsOfExperience: parseInt(document.getElementById('editTutorExperience').value),
-        experienceLevel: document.getElementById('editTutorLevel').value,
-        subjects: document.getElementById('editTutorSubjects').value.split(',').map(s => s.trim())
-      });
-      UI.showAlert('Tutor updated!', 'success');
-      modal.remove();
-      renderAdminManageTutors();
+      try {
+        const result = await appData.updateUser(id, {
+          name: document.getElementById('editTutorName').value,
+          email: document.getElementById('editTutorEmail').value,
+          bio: document.getElementById('editTutorBio').value,
+          qualifications: document.getElementById('editTutorQualifications').value,
+          yearsOfExperience: parseInt(document.getElementById('editTutorExperience').value),
+          experienceLevel: document.getElementById('editTutorLevel').value,
+          subjects: document.getElementById('editTutorSubjects').value.split(',').map(s => s.trim())
+        });
+        if (result) {
+          UI.showAlert('Tutor updated successfully!', 'success');
+          modal.remove();
+          await renderAdminManageTutors();
+        } else {
+          UI.showAlert('Error updating tutor.', 'danger');
+        }
+      } catch (error) {
+        console.error('Error updating tutor:', error);
+        UI.showAlert('Error: ' + error.message, 'danger');
+      }
     });
   }
 };
 
-window.toggleTutorAvailability = (id) => {
-  const tutor = appData.getTutorById(id);
-  if (tutor) {
-    appData.updateUser(id, { isAvailable: !tutor.isAvailable });
-    UI.showAlert(`Tutor ${tutor.isAvailable ? 'set to unavailable' : 'set to available'}!`, 'success');
-    renderAdminManageTutors();
+window.toggleTutorAvailability = async (id) => {
+  try {
+    const tutor = await appData.getTutorById(id);
+    if (tutor) {
+      const result = await appData.updateUser(id, { isAvailable: !(tutor.is_available ?? tutor.isAvailable ?? true) });
+      if (result) {
+        UI.showAlert(`Tutor ${(tutor.is_available ?? tutor.isAvailable ?? true) ? 'set to unavailable' : 'set to available'}!`, 'success');
+        await renderAdminManageTutors();
+      } else {
+        UI.showAlert('Error updating tutor availability.', 'danger');
+      }
+    }
+  } catch (error) {
+    console.error('Error toggling tutor availability:', error);
+    UI.showAlert('Error: ' + error.message, 'danger');
   }
 };
 
-window.deleteUser = (id) => {
+window.deleteUser = async (id) => {
   if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-    appData.deleteUser(id);
-    UI.showAlert('User deleted!', 'success');
-    renderAdminManageTutors();
+    try {
+      const deletedUser = appData.getUsers().find(u => u.id === id);
+      const result = await appData.deleteUser(id);
+      if (result) {
+        UI.showAlert('User deleted successfully!', 'success');
+        if (deletedUser?.role === 'student') {
+          await renderAdminManageStudents();
+        } else {
+          await renderAdminManageTutors();
+        }
+      } else {
+        UI.showAlert('Error deleting user.', 'danger');
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      UI.showAlert('Error: ' + error.message, 'danger');
+    }
   }
 };
 
 // PAGE 24: ADMIN MANAGE STUDENTS
-function renderAdminManageStudents() {
+async function renderAdminManageStudents() {
+  if (!appData) {
+    console.error('[AdminManageStudents] appData not initialized');
+    return;
+  }
   const user = appData.getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!isAdmin(user)) {
     UI.showAlert('Access Denied. Admins Only!', 'danger');
     router.navigate('/');
     return;
   }
 
-  const students = appData.getStudents();
+  const students = await appData.getStudents() || [];
 
   const html = `
     <div class="container" style="padding: 2rem 0;">
@@ -4240,14 +4887,15 @@ function renderAdminManageStudents() {
         ${students.length > 0 ? students.map(student => `
           <div class="session-item" style="margin-bottom: 1rem;">
             <div class="session-info">
-              <div class="session-title">${sanitize(student.name)}</div>
+              <div class="session-title">${sanitize(student.name || 'Unnamed')}</div>
               <div class="session-meta">
-                <span>${sanitize(student.email)}</span>
-                <span class="badge badge-secondary">${student.gradeLevel}</span>
+                <span>${sanitize(student.email || '—')}</span>
+                ${student.gradeLevel ? `<span class="badge badge-secondary">${sanitize(student.gradeLevel)}</span>` : ''}
               </div>
+              ${(student.interests || []).length > 0 ? `
               <div style="margin-top: 0.5rem;">
-                ${student.interests.map(i => `<span class="subject-tag">${sanitize(i)}</span>`).join('')}
-              </div>
+                ${(student.interests || []).map(i => `<span class="subject-tag">${sanitize(i)}</span>`).join('')}
+              </div>` : ''}
             </div>
             <div style="display: flex; gap: 0.5rem; flex-direction: column;">
               <button class="btn btn-sm btn-outline" onclick="editStudent('${student.id}')">Edit</button>
@@ -4260,25 +4908,33 @@ function renderAdminManageStudents() {
   `;
   UI.setContent(html);
 
-  document.getElementById('addStudentForm')?.addEventListener('submit', (e) => {
+  document.getElementById('addStudentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const student = {
-      name: document.getElementById('studentName').value,
-      email: document.getElementById('studentEmail').value,
-      gradeLevel: document.getElementById('studentGrade').value,
-      interests: document.getElementById('studentInterests').value.split(',').map(s => s.trim()),
-      role: 'student',
-      avatar: '👤'
-    };
-    appData.addUser(student);
-    UI.showAlert('Student added successfully!', 'success');
-    renderAdminManageStudents();
+    try {
+      const student = {
+        name: document.getElementById('studentName').value,
+        email: document.getElementById('studentEmail').value,
+        gradeLevel: document.getElementById('studentGrade').value,
+        interests: document.getElementById('studentInterests').value.split(',').map(s => s.trim()),
+        role: 'student',
+        avatar: '👤'
+      };
+      const result = await appData.addUser(student);
+      if (result) {
+        UI.showAlert('Student added successfully!', 'success');
+        await renderAdminManageStudents();
+      } else {
+        UI.showAlert('Error adding student. Please try again.', 'danger');
+      }
+    } catch (error) {
+      console.error('Error in addStudentForm:', error);
+      UI.showAlert('Error: ' + error.message, 'danger');
+    }
   });
 }
 
-window.editStudent = (id) => {
-  const students = appData.getStudents();
-  const student = students.find(s => s.id === id);
+window.editStudent = async (id) => {
+  const student = await appData.getStudentById(id);
   if (student) {
     const html = `
       <div>
@@ -4287,11 +4943,11 @@ window.editStudent = (id) => {
           <div class="grid-2">
             <div class="form-group">
               <label class="form-label">Name</label>
-              <input type="text" class="form-input" id="editStudentName" value="${sanitize(student.name)}" required>
+              <input type="text" class="form-input" id="editStudentName" value="${sanitize(student.name || '')}" required>
             </div>
             <div class="form-group">
               <label class="form-label">Email</label>
-              <input type="email" class="form-input" id="editStudentEmail" value="${sanitize(student.email)}" required>
+              <input type="email" class="form-input" id="editStudentEmail" value="${sanitize(student.email || '')}" required>
             </div>
           </div>
           <div class="form-group">
@@ -4306,24 +4962,33 @@ window.editStudent = (id) => {
           </div>
           <div class="form-group">
             <label class="form-label">Interests (comma separated)</label>
-            <input type="text" class="form-input" id="editStudentInterests" value="${student.interests.join(', ')}" required>
+            <input type="text" class="form-input" id="editStudentInterests" value="${(student.interests || []).join(', ')}" required>
           </div>
           <button type="submit" class="btn btn-primary">Update Student</button>
         </form>
       </div>
     `;
     const modal = UI.showModal(html, 'Edit Student');
-    document.getElementById('editStudentForm')?.addEventListener('submit', (e) => {
+    document.getElementById('editStudentForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      appData.updateUser(id, {
-        name: document.getElementById('editStudentName').value,
-        email: document.getElementById('editStudentEmail').value,
-        gradeLevel: document.getElementById('editStudentGrade').value,
-        interests: document.getElementById('editStudentInterests').value.split(',').map(s => s.trim())
-      });
-      UI.showAlert('Student updated!', 'success');
-      modal.remove();
-      renderAdminManageStudents();
+      try {
+        const result = await appData.updateUser(id, {
+          name: document.getElementById('editStudentName').value,
+          email: document.getElementById('editStudentEmail').value,
+          gradeLevel: document.getElementById('editStudentGrade').value,
+          interests: document.getElementById('editStudentInterests').value.split(',').map(s => s.trim())
+        });
+        if (result) {
+          UI.showAlert('Student updated successfully!', 'success');
+          modal.remove();
+          await renderAdminManageStudents();
+        } else {
+          UI.showAlert('Error updating student.', 'danger');
+        }
+      } catch (error) {
+        console.error('Error updating student:', error);
+        UI.showAlert('Error: ' + error.message, 'danger');
+      }
     });
   }
 };
@@ -4476,41 +5141,457 @@ class WhatsAppComponent {
   }
 }
 
-// Initialize WhatsApp
-document.addEventListener('DOMContentLoaded', () => {
-  window.whatsappComponent = new WhatsAppComponent({
-    phoneNumber: '+1234567890'
-  });
-});
+
+// ============================================================================
+// PAGE 25: USER EXPERIENCES
+// ============================================================================
+
+async function renderUserExperiences() {
+  if (!appData) {
+    console.error('[UserExperiences] appData not initialized');
+    return;
+  }
+  const allExp = await appData.getExperiences() || [];
+  const experiences = allExp.filter(e => e.status === 'approved');
+  const currentUser = appData.getCurrentUser();
+
+  const html = `
+    <div class="container" style="padding: 2rem 0;">
+      <div style="margin-bottom: 3rem;">
+        <h1 class="mb-md">User Experiences</h1>
+        <p class="text-secondary" style="font-size: 1.1rem; margin-bottom: 2rem;">Read what our users have to say about their learning journey with us</p>
+      </div>
+
+      ${currentUser ? `
+        <div class="card mb-xl" style="background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%); color: white; border: none;">
+          <h3 style="color: white; margin-bottom: 1rem;">Share Your Experience</h3>
+          <form id="experienceForm">
+            <div class="form-group">
+              <label class="form-label" style="color: white;">Your Name</label>
+              <input type="text" class="form-input" id="experienceName" placeholder="Your name" value="${sanitize(currentUser.name || '')}" required>
+            </div>
+            <div class="grid-2">
+              <div class="form-group">
+                <label class="form-label" style="color: white;">Subject/Topic</label>
+                <input type="text" class="form-input" id="experienceSubject" placeholder="e.g., Mathematics, English" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="color: white;">Rating</label>
+                <select class="form-input" id="experienceRating" required>
+                  <option value="">Select Rating</option>
+                  <option value="5">⭐⭐⭐⭐⭐ - Excellent</option>
+                  <option value="4">⭐⭐⭐⭐ - Very Good</option>
+                  <option value="3">⭐⭐⭐ - Good</option>
+                  <option value="2">⭐⭐ - Fair</option>
+                  <option value="1">⭐ - Poor</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="color: white;">Your Experience</label>
+              <textarea class="form-textarea" id="experienceText" placeholder="Share your learning experience, what you learned, and how it helped you..." rows="4" maxlength="500" required></textarea>
+              <div style="margin-top: 0.5rem; color: rgba(255,255,255,0.8); font-size: 0.9rem;">
+                <span id="experienceCharCount">0</span>/500 characters
+              </div>
+            </div>
+            <button type="submit" class="btn" style="background: white; color: var(--color-primary); font-weight: 600; padding: 0.75rem 2rem; border-radius: var(--radius-lg);">
+              Submit Experience
+            </button>
+          </form>
+        </div>
+      ` : `
+        <div class="card mb-xl" style="background: var(--color-muted); padding: 2rem; border-radius: var(--radius-lg);">
+          <p class="text-center" style="margin: 0;"><strong>Sign in or create an account</strong> to share your experience</p>
+        </div>
+      `}
+
+      <div>
+        <h2 class="mb-lg" style="font-size: 1.5rem;">Experiences from Our Community</h2>
+        ${experiences.length > 0 ? `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem;">
+            ${experiences.map(exp => `
+              <div class="card" style="display: flex; flex-direction: column; transition: var(--transition-base);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                  <div>
+                    <h3 style="margin: 0; font-size: 1.1rem;">${sanitize(exp.name)}</h3>
+                    <p style="margin: 0.25rem 0 0 0; color: var(--color-text-secondary); font-size: 0.9rem;">${sanitize(exp.subject)}</p>
+                  </div>
+                  <div style="display: flex; gap: 0.25rem;">
+                    ${Array(5).fill(0).map((_, i) => `<span style="color: ${i < parseInt(exp.rating) ? '#FFA500' : '#ddd'};">★</span>`).join('')}
+                  </div>
+                </div>
+                <p style="flex: 1; margin-bottom: 1rem; line-height: 1.6; color: var(--color-text-secondary);">"${sanitize(exp.experience)}"</p>
+                <div style="padding-top: 1rem; border-top: 1px solid var(--color-muted); font-size: 0.85rem; color: var(--color-text-secondary);">
+                  ${new Date(exp.created_at || exp.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : `
+          <div class="card text-center" style="padding: 3rem;">
+            <p class="text-secondary" style="font-size: 1.1rem;">No experiences yet. Be the first to share!</p>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+
+  UI.setContent(html);
+
+  if (currentUser) {
+    const textArea = document.getElementById('experienceText');
+    const charCount = document.getElementById('experienceCharCount');
+
+    textArea?.addEventListener('input', (e) => {
+      charCount.textContent = e.target.value.length;
+    });
+
+    document.getElementById('experienceForm')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const experience = {
+        name: document.getElementById('experienceName').value,
+        subject: document.getElementById('experienceSubject').value,
+        rating: document.getElementById('experienceRating').value,
+        experience: document.getElementById('experienceText').value,
+        userId: currentUser.id
+      };
+
+      appData.addExperience(experience);
+      UI.showAlert('Thank you! Your experience has been submitted and is awaiting admin approval.', 'success');
+      renderUserExperiences();
+    });
+  }
+}
+
+// PAGE 26: ADMIN MANAGE EXPERIENCES
+async function renderAdminExperiences() {
+  if (!appData) {
+    console.error('[AdminExperiences] appData not initialized');
+    return;
+  }
+  const user = appData.getCurrentUser();
+  if (!isAdmin(user)) {
+    UI.showAlert('Access Denied. Admins Only!', 'danger');
+    router.navigate('/');
+    return;
+  }
+
+  const experiences = await appData.getExperiences() || [];
+  const approved = experiences.filter(e => e.status === 'approved');
+  const pending = experiences.filter(e => e.status === 'pending');
+
+  const html = `
+    <div class="container" style="padding: 2rem 0;">
+      <h1 class="mb-lg">Manage User Experiences</h1>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="card" style="background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%); color: white; text-align: center; padding: 2rem;">
+          <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem;">${experiences.length}</div>
+          <div style="font-size: 0.9rem; opacity: 0.9;">Total Experiences</div>
+        </div>
+        <div class="card" style="background: linear-gradient(135deg, var(--color-success) 0%, #06B6D4 100%); color: white; text-align: center; padding: 2rem;">
+          <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem;">${approved.length}</div>
+          <div style="font-size: 0.9rem; opacity: 0.9;">Approved</div>
+        </div>
+        <div class="card" style="background: linear-gradient(135deg, var(--color-warning) 0%, #F97316 100%); color: white; text-align: center; padding: 2rem;">
+          <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem;">${pending.length}</div>
+          <div style="font-size: 0.9rem; opacity: 0.9;">Pending Review</div>
+        </div>
+      </div>
+
+      ${pending.length > 0 ? `
+        <div class="card mb-xl">
+          <h3 class="mb-lg" style="color: var(--color-warning);">⏳ Pending Experiences (${pending.length})</h3>
+          ${pending.map(exp => `
+            <div style="padding: 1.5rem; background: var(--color-background); border-radius: var(--radius-lg); margin-bottom: 1rem; border-left: 4px solid var(--color-warning);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div>
+                  <h4 style="margin: 0; font-size: 1.1rem;">${sanitize(exp.name)}</h4>
+                  <p style="margin: 0.25rem 0 0 0; color: var(--color-text-secondary); font-size: 0.9rem;">${sanitize(exp.subject)}</p>
+                </div>
+                <span style="display: flex; gap: 0.25rem; font-size: 1.2rem;">
+                  ${Array(5).fill(0).map((_, i) => `<span style="color: ${i < parseInt(exp.rating) ? '#FFA500' : '#ddd'};">★</span>`).join('')}
+                </span>
+              </div>
+              <p style="margin: 1rem 0; line-height: 1.6; color: var(--color-text-primary);">"${sanitize(exp.experience)}"</p>
+              <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-muted); display: flex; gap: 1rem; justify-content: space-between; align-items: center;">
+                <small style="color: var(--color-text-secondary);">Submitted: ${new Date(exp.created_at || exp.createdAt).toLocaleDateString()}</small>
+                <div style="display: flex; gap: 0.5rem;">
+                  <button class="btn btn-sm btn-success" onclick="approveExperience('${exp.id}')">✓ Approve</button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteExperienceAdmin('${exp.id}')">✕ Reject</button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <div class="card">
+        <h3 class="mb-lg" style="color: var(--color-success);">✓ Approved Experiences (${approved.length})</h3>
+        ${approved.length > 0 ? approved.map(exp => `
+          <div style="padding: 1.5rem; background: var(--color-background); border-radius: var(--radius-lg); margin-bottom: 1rem; border-left: 4px solid var(--color-success);">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+              <div>
+                <h4 style="margin: 0; font-size: 1.1rem;">${sanitize(exp.name)}</h4>
+                <p style="margin: 0.25rem 0 0 0; color: var(--color-text-secondary); font-size: 0.9rem;">${sanitize(exp.subject)}</p>
+              </div>
+              <span style="display: flex; gap: 0.25rem; font-size: 1.2rem;">
+                ${Array(5).fill(0).map((_, i) => `<span style="color: ${i < parseInt(exp.rating) ? '#FFA500' : '#ddd'};">★</span>`).join('')}
+              </span>
+            </div>
+            <p style="margin: 1rem 0; line-height: 1.6; color: var(--color-text-primary);">"${sanitize(exp.experience)}"</p>
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-muted); display: flex; gap: 1rem; justify-content: space-between; align-items: center;">
+              <small style="color: var(--color-text-secondary);">Approved: ${new Date(exp.created_at || exp.createdAt).toLocaleDateString()}</small>
+              <button class="btn btn-sm btn-danger" onclick="deleteExperienceAdmin('${exp.id}')">🗑 Remove</button>
+            </div>
+          </div>
+        `).join('') : '<p class="text-muted">No approved experiences yet</p>'}
+      </div>
+    </div>
+  `;
+
+  UI.setContent(html);
+}
+
+window.approveExperience = async (experienceId) => {
+  await appData.approveExperience(experienceId);
+  UI.showAlert('Experience approved and published!', 'success');
+  renderAdminExperiences();
+};
+
+window.deleteExperienceAdmin = async (experienceId) => {
+  if (confirm('Are you sure you want to delete this experience? This action cannot be undone.')) {
+    await appData.deleteExperience(experienceId);
+    UI.showAlert('Experience deleted!', 'success');
+    renderAdminExperiences();
+  }
+};
+
+// ============================================================================
+// FOOTER COMPONENT
+// ============================================================================
+
+function getFooterHTML() {
+  const year = new Date().getFullYear();
+  return `
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-grid">
+          <div class="footer-col footer-brand-col">
+            <div class="footer-logo">
+              <img src="aroosh-logo-dark.png" alt="Aroosh Online Tutors" class="logo-img footer-logo-img">
+            </div>
+            <p class="footer-tagline">Expert online tutoring for every subject. Flexible scheduling, personalized learning, and real results.</p>
+            <div class="footer-social">
+              <a href="https://wa.me/923354979890" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" class="footer-social-link">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.67-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.076 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>
+              </a>
+              <a href="mailto:contact@arooshtutors.com" aria-label="Email" class="footer-social-link">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="footer-col">
+            <h4 class="footer-heading">Quick Links</h4>
+            <ul class="footer-links">
+              <li><a href="#/" onclick="router.navigate('/')">Home</a></li>
+              <li><a href="#/tutors" onclick="router.navigate('/tutors')">Find Tutors</a></li>
+              <li><a href="#/experiences" onclick="router.navigate('/experiences')">User Experiences</a></li>
+
+            </ul>
+          </div>
+
+          <div class="footer-col">
+            <h4 class="footer-heading">For Students</h4>
+            <ul class="footer-links">
+              <li><a href="signup-student.html">Sign Up as Student</a></li>
+
+            </ul>
+          </div>
+
+          <div class="footer-col">
+            <h4 class="footer-heading">For Tutors</h4>
+            <ul class="footer-links">
+              <li><a href="signup-tutor.html">Sign Up as Tutor</a></li>
+              <li><a href="#/schedule" onclick="router.navigate('/schedule')">Schedule & Slots</a></li>
+              <li><a href="#/chat" onclick="router.navigate('/chat')">Messages</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="footer-divider"></div>
+
+        <div class="footer-bottom">
+          <p class="footer-copyright">&copy; ${year} Aroosh Online Tutors. All rights reserved.</p>
+          <div class="footer-legal" style="display: flex; gap: 1rem; justify-content: center; margin-top: 0.5rem;">
+            <a href="#" onclick="event.preventDefault(); window.open('privacy-policy.html', '_blank'); return false;" style="color: var(--color-text-secondary); font-size: 0.85rem; text-decoration: none; pointer-events: auto; cursor: pointer;" onmouseover="this.style.color='var(--color-primary)'" onmouseout="this.style.color='var(--color-text-secondary)'">Privacy Policy</a>
+            <a href="#" onclick="event.preventDefault(); window.open('terms-of-service.html', '_blank'); return false;" style="color: var(--color-text-secondary); font-size: 0.85rem; text-decoration: none; pointer-events: auto; cursor: pointer;" onmouseover="this.style.color='var(--color-primary)'" onmouseout="this.style.color='var(--color-text-secondary)'">Terms of Service</a>
+          </div>
+          <p class="footer-credit">Made by <strong>M Shahzaib Sajid</strong></p>
+        </div>
+      </div>
+    </footer>
+  `;
+}
+
+function injectFooter() {
+  const app = document.getElementById('app');
+  if (!app) return;
+  const existing = app.querySelector('.site-footer');
+  if (existing) existing.remove();
+  app.insertAdjacentHTML('beforeend', getFooterHTML());
+}
 
 // ============================================================================
 // 5. ROUTER REGISTRATION
 // ============================================================================
 
+
+// ============================================================================
+// SCROLL REVEAL ENGINE
+// ============================================================================
+function initScrollReveal() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('revealed');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.scroll-reveal, .scroll-reveal-left, .scroll-reveal-right, .scroll-reveal-stagger')
+    .forEach(el => observer.observe(el));
+}
+
+function initHeroParallax() {
+  const shapes = document.querySelectorAll('.hero-blob');
+  if (!shapes.length) return;
+  const onScroll = () => {
+    const scrollY = window.scrollY;
+    shapes.forEach((el, i) => {
+      el.style.transform = `translateY(${scrollY * (0.06 + i * 0.03)}px)`;
+    });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  const cleanup = () => window.removeEventListener('scroll', onScroll);
+  window.addEventListener('hashchange', cleanup, { once: true });
+}
+
+function initCounterAnimations() {
+  const counters = document.querySelectorAll('[data-counter]');
+  if (!counters.length) return;
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const el = entry.target;
+      const target = parseInt(el.dataset.counter);
+      const suffix = el.dataset.suffix || '';
+      const duration = 1200;
+      let start = 0;
+      const step = target / (duration / 16);
+      const timer = setInterval(() => {
+        start = Math.min(start + step, target);
+        el.textContent = Math.floor(start).toLocaleString() + suffix;
+        if (start >= target) clearInterval(timer);
+      }, 16);
+      observer.unobserve(el);
+    });
+  }, { threshold: 0.5 });
+  counters.forEach(el => observer.observe(el));
+}
+
+// PUBLIC PAGES: Announcements & Posts (visible to all users including guests)
+async function renderPublicAnnouncements() {
+  if (!appData) { console.error('[Announcements] appData not initialized'); return; }
+  let announcements = [];
+  try { announcements = await appData.getAnnouncements() || []; } catch(e) { console.error(e); }
+
+  const html = `
+    <div class="container" style="padding: 2rem 0;">
+      <h1 class="text-center mb-lg">📢 Announcements</h1>
+      <p class="text-center text-muted mb-2xl">Important updates and notices from the admin team.</p>
+      ${announcements.length > 0 ? `
+      <div style="display: grid; gap: 1rem; max-width: 800px; margin: 0 auto;">
+        ${announcements.map(ann => `
+          <div class="card" style="padding: 1.5rem; border-left: 4px solid ${ann.priority === 'high' ? 'var(--color-danger)' : ann.priority === 'medium' ? 'var(--color-warning)' : 'var(--color-success)'};">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+              <h3 style="margin: 0; font-size: 1.1rem;">${sanitize(ann.title)}</h3>
+              <span class="badge badge-${ann.priority === 'high' ? 'danger' : ann.priority === 'medium' ? 'warning' : 'success'}" style="font-size: 0.75rem;">${ann.priority || 'normal'}</span>
+            </div>
+            <p class="text-muted" style="margin: 0; font-size: 0.95rem;">${sanitize(ann.content)}</p>
+            <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-text-secondary);">
+              Posted: ${new Date(ann.created_at || ann.createdAt).toLocaleDateString()}
+              ${ann.author ? ' by ' + sanitize(ann.author.name || '') : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ` : `<div class="text-center" style="padding: 3rem;"><p class="text-muted">No announcements yet. Check back later!</p></div>`}
+    </div>
+  `;
+  UI.setContent(html);
+}
+
+async function renderPublicPosts() {
+  if (!appData) { console.error('[Posts] appData not initialized'); return; }
+  let posts = [];
+  try { posts = await appData.getPosts() || []; } catch(e) { console.error(e); }
+
+  const html = `
+    <div class="container" style="padding: 2rem 0;">
+      <h1 class="text-center mb-lg">📝 Posts</h1>
+      <p class="text-center text-muted mb-2xl">Articles, tips, and updates from the Aroosh community.</p>
+      ${posts.length > 0 ? `
+      <div class="grid-3" style="max-width: 1000px; margin: 0 auto;">
+        ${posts.map(post => `
+          <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column;">
+            <span class="badge badge-secondary" style="align-self: flex-start; margin-bottom: 0.75rem; font-size: 0.8rem;">${sanitize(post.category || 'General')}</span>
+            <h3 style="margin: 0 0 0.75rem 0; font-size: 1.1rem;">${sanitize(post.title)}</h3>
+            <p class="text-muted" style="margin: 0 0 1rem 0; font-size: 0.9rem; flex-grow: 1;">${sanitize((post.content || '').substring(0, 200))}${post.content && post.content.length > 200 ? '...' : ''}</p>
+            <div style="font-size: 0.85rem; color: var(--color-text-secondary);">
+              ${new Date(post.created_at || post.createdAt).toLocaleDateString()}
+              ${post.author ? ' by ' + sanitize(post.author.name || '') : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ` : `<div class="text-center" style="padding: 3rem;"><p class="text-muted">No posts yet. Check back later!</p></div>`}
+    </div>
+  `;
+  UI.setContent(html);
+}
+
 router.register('/', renderHome);
+router.register('/announcements', renderPublicAnnouncements);
+router.register('/posts', renderPublicPosts);
 router.register('/role-selection', renderRoleSelection);
-router.register('/signup/student', renderStudentSignUp);
-router.register('/signup/tutor', renderTutorSignUp);
+router.register('/login', () => { window.location.href = 'login.html'; });
+router.register('/signup-student', () => { window.location.href = 'signup-student.html'; });
+router.register('/signup-tutor', () => { window.location.href = 'signup-tutor.html'; });
+router.register('/setup-student-profile', () => { window.location.href = 'setup-student-profile.html'; });
+router.register('/setup-tutor-profile', () => { window.location.href = 'setup-tutor-profile.html'; });
+router.register('/privacy-policy', () => { window.location.href = 'privacy-policy.html'; });
+router.register('/terms-of-service', () => { window.location.href = 'terms-of-service.html'; });
 router.register('/tutors', renderFindTutors);
 router.register('/tutors/:id', (hash) => renderTutorProfile(hash));
 router.register('/student-dashboard', renderStudentDashboard);
 router.register('/tutor-dashboard', renderTutorDashboard);
 router.register('/chat', renderChat);
-router.register('/assignments', renderAssignments);
 router.register('/schedule', renderSchedule);
-router.register('/video-call', renderVideoCall);
-router.register('/leaderboard', renderLeaderboard);
-router.register('/ai-chatbot', renderAIChatbot);
-router.register('/ai-tutor-matching', renderAITutorMatching);
-router.register('/ai-grading', renderAIGrading);
+
 router.register('/admin', renderAdminDashboard);
-router.register('/admin/analytics', renderAdminAnalytics);
 router.register('/admin/approvals', renderAdminApprovals);
-router.register('/admin/disputes', renderAdminDisputes);
+router.register('/admin/sessions', renderAdminSessions);
 router.register('/admin/announcements', renderAdminAnnouncements);
 router.register('/admin/feedback', renderAdminFeedback);
 router.register('/admin/manage-tutors', renderAdminManageTutors);
 router.register('/admin/manage-students', renderAdminManageStudents);
+router.register('/experiences', renderUserExperiences);
+router.register('/leaderboard', renderLeaderboard);
+router.register('/assignments', renderAssignments);
+router.register('/admin/experiences', renderAdminExperiences);
 
 // ============================================================================
 // 6. COLLAPSIBLE SIDEBAR MENU REDESIGNED
@@ -4518,7 +5599,7 @@ router.register('/admin/manage-students', renderAdminManageStudents);
 
 function renderSidebar() {
   const currentUser = appData.getCurrentUser();
-  const role = currentUser?.role || 'guest';
+  const role = normalizeRole(currentUser?.role);
   const currentHash = window.location.hash || '#/';
 
   const isActive = (hash) => {
@@ -4530,46 +5611,45 @@ function renderSidebar() {
 
   const guestLinks = [
     { label: 'Home', icon: '🏠', hash: '#/' },
+    { label: 'Announcements', icon: '📢', hash: '#/announcements' },
+    { label: 'Posts', icon: '📝', hash: '#/posts' },
     { label: 'Find Tutors', icon: '🔍', hash: '#/tutors' },
-    { label: 'Sign In / Sign Up', icon: '🔐', hash: '#/role-selection' }
+    { label: 'Experiences', icon: '⭐', hash: '#/experiences' },
+    { label: 'Sign In / Sign Up', icon: '🔐', hash: '#/login' }
   ];
 
   const studentLinks = [
     { label: 'Home', icon: '🏠', hash: '#/' },
+    { label: 'Announcements', icon: '📢', hash: '#/announcements' },
+    { label: 'Posts', icon: '📝', hash: '#/posts' },
     { label: 'Find Tutors', icon: '🔍', hash: '#/tutors' },
     { label: 'My Sessions', icon: '📅', hash: '#/student-dashboard' },
     { label: 'Messages', icon: '💬', hash: '#/chat' },
-    { label: 'Assignments', icon: '📝', hash: '#/assignments' },
-    { label: 'Leaderboard', icon: '🏆', hash: '#/leaderboard' },
-    { label: 'AI Chatbot', icon: '🤖', hash: '#/ai-chatbot' },
-    { label: 'AI Tutor Match', icon: '🎯', hash: '#/ai-tutor-matching' },
-    { label: 'AI Grading', icon: '📊', hash: '#/ai-grading' },
-    { label: 'Video Classroom', icon: '📹', hash: '#/video-call' }
+    { label: 'Experiences', icon: '⭐', hash: '#/experiences' }
   ];
 
   const tutorLinks = [
     { label: 'Home', icon: '🏠', hash: '#/' },
+    { label: 'Announcements', icon: '📢', hash: '#/announcements' },
+    { label: 'Posts', icon: '📝', hash: '#/posts' },
     { label: 'Browse Tutors', icon: '👥', hash: '#/tutors' },
     { label: 'Schedule & Slots', icon: '📆', hash: '#/schedule' },
     { label: 'Messages', icon: '💬', hash: '#/chat' },
     { label: 'My Dashboard', icon: '📋', hash: '#/tutor-dashboard' },
-    { label: 'Leaderboard', icon: '🏆', hash: '#/leaderboard' },
-    { label: 'AI Chatbot', icon: '🤖', hash: '#/ai-chatbot' },
-    { label: 'Video Classroom', icon: '📹', hash: '#/video-call' }
+    { label: 'Experiences', icon: '⭐', hash: '#/experiences' }
   ];
 
   const adminLinks = [
     { label: 'Home', icon: '🏠', hash: '#/' },
     { label: 'Admin Panel', icon: '🛡️', hash: '#/admin' },
-    { label: 'Analytics', icon: '📊', hash: '#/admin/analytics' },
     { label: 'Approvals', icon: '✅', hash: '#/admin/approvals' },
-    { label: 'Disputes & Refunds', icon: '⚖️', hash: '#/admin/disputes' },
+    { label: 'Manage Sessions', icon: '📅', hash: '#/admin/sessions' },
     { label: 'Announcements & Posts', icon: '📢', hash: '#/admin/announcements' },
     { label: 'User Feedback', icon: '💬', hash: '#/admin/feedback' },
+    { label: 'User Experiences', icon: '⭐', hash: '#/admin/experiences' },
     { label: 'Manage Tutors', icon: '👨‍🏫', hash: '#/admin/manage-tutors' },
     { label: 'Manage Students', icon: '👨‍🎓', hash: '#/admin/manage-students' },
-    { label: 'All Tutors List', icon: '👥', hash: '#/tutors' },
-    { label: 'Leaderboard', icon: '🏆', hash: '#/leaderboard' }
+    { label: 'All Tutors List', icon: '👥', hash: '#/tutors' }
   ];
 
   let activeLinks = [];
@@ -4577,6 +5657,38 @@ function renderSidebar() {
   else if (role === 'tutor') activeLinks = tutorLinks;
   else if (role === 'admin') activeLinks = adminLinks;
   else activeLinks = guestLinks;
+
+  // Detect incomplete profile for authenticated users
+  let setupHtml = '';
+  if (role === 'student') {
+    const missing = !currentUser?.subjects?.length || !currentUser?.experience_level || !currentUser?.bio;
+    if (missing) {
+      const active = isActive('#/setup-student-profile') ? 'class="active"' : '';
+      setupHtml = `
+        <div class="sidebar-setup" style="margin: 0 12px 12px; padding: 12px; background: linear-gradient(135deg, rgba(245,158,11,.12), rgba(245,158,11,.05)); border: 1px solid rgba(245,158,11,.35); border-radius: 10px;">
+          <div style="font-size: 12px; font-weight: 700; color: #92400e; margin-bottom: 6px;">⚠️ Profile Incomplete</div>
+          <div style="font-size: 12px; color: #78350f; margin-bottom: 10px; line-height: 1.4;">Complete your profile to unlock all features.</div>
+          <a href="setup-student-profile.html" ${active} style="display: block; padding: 8px 12px; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); color: #fff; border-radius: 8px; text-align: center; font-size: 13px; font-weight: 700; text-decoration: none; box-shadow: 0 2px 8px rgba(138,48,127,.3);">
+            <span style="margin-right:4px;">✏️</span> Complete Profile
+          </a>
+        </div>
+      `;
+    }
+  } else if (role === 'tutor') {
+    const missing = !currentUser?.qualifications || !currentUser?.bio;
+    if (missing) {
+      const active = isActive('#/setup-tutor-profile') ? 'class="active"' : '';
+      setupHtml = `
+        <div class="sidebar-setup" style="margin: 0 12px 12px; padding: 12px; background: linear-gradient(135deg, rgba(245,158,11,.12), rgba(245,158,11,.05)); border: 1px solid rgba(245,158,11,.35); border-radius: 10px;">
+          <div style="font-size: 12px; font-weight: 700; color: #92400e; margin-bottom: 6px;">⚠️ Profile Incomplete</div>
+          <div style="font-size: 12px; color: #78350f; margin-bottom: 10px; line-height: 1.4;">Complete your tutor profile to start accepting bookings.</div>
+          <a href="setup-tutor-profile.html" ${active} style="display: block; padding: 8px 12px; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); color: #fff; border-radius: 8px; text-align: center; font-size: 13px; font-weight: 700; text-decoration: none; box-shadow: 0 2px 8px rgba(138,48,127,.3);">
+            <span style="margin-right:4px;">✏️</span> Complete Profile
+          </a>
+        </div>
+      `;
+    }
+  }
 
   let menuHtml = activeLinks.map(link => {
     const active = isActive(link.hash) ? 'class="active"' : '';
@@ -4589,6 +5701,19 @@ function renderSidebar() {
       </li>
     `;
   }).join('');
+
+  // Add Edit Profile link for students and tutors
+  if (role === 'student' || role === 'tutor') {
+    const profileLink = role === 'student' ? 'setup-student-profile.html' : 'setup-tutor-profile.html';
+    menuHtml += `
+      <li style="border-top: 1px solid var(--color-muted); margin-top: 0.5rem; padding-top: 0.5rem;">
+        <a href="${profileLink}" style="color: var(--color-primary); font-weight: 600;">
+          <span class="sidebar-menu-icon" style="font-size: 1.2rem;">✏️</span>
+          <span class="sidebar-menu-label">Edit Profile</span>
+        </a>
+      </li>
+    `;
+  }
 
   if (role !== 'guest') {
     menuHtml += `
@@ -4611,7 +5736,7 @@ function renderSidebar() {
     sidebarEl.classList.remove('collapsed');
   }
 
-  const avatar = currentUser?.avatar || (role === 'tutor' ? '👨‍🏫' : role === 'admin' ? '🛡️' : '👤');
+  const rawAvatar = currentUser?.avatar || (role === 'tutor' ? '👨‍🏫' : role === 'admin' ? '🛡️' : '👤');
   const name = currentUser?.name || 'Guest User';
   const roleDisplay = role.toUpperCase();
   const badgeClass = role === 'guest' ? 'secondary' : 'primary';
@@ -4627,9 +5752,9 @@ function renderSidebar() {
       </button>
     `
     : `
-      <div class="sidebar-logo">
-        <span class="logo-main" style="color: var(--color-primary);">Aroosh</span>
-        <span class="logo-sub" style="color: var(--color-text-secondary); font-weight: 400; font-size: var(--font-size-sm);">Tutors</span>
+      <div class="sidebar-logo" id="adminLogoTrigger" style="cursor: pointer;">
+        <img src="aroosh-logo-light.png" alt="Aroosh Online Tutors" class="logo-img logo-light">
+        <img src="aroosh-logo-dark.png" alt="Aroosh Online Tutors" class="logo-img logo-dark">
       </div>
       <div style="display: flex; align-items: center; gap: 6px;">
         <button onclick="window.toggleDarkMode()" class="btn btn-ghost btn-sm" style="padding: 4px; font-size: 16px; border: none; background: transparent; cursor: pointer;" title="Toggle Dark/Light Mode">${darkIcon}</button>
@@ -4645,26 +5770,23 @@ function renderSidebar() {
     </div>
 
     <div class="sidebar-profile">
-      <div class="sidebar-avatar">${avatar}</div>
+      <div class="sidebar-avatar" style="font-size: 2rem; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">${renderAvatar(rawAvatar, 50, name)}</div>
       <div class="sidebar-profile-info">
         <div class="sidebar-name">${name}</div>
         <span class="sidebar-role badge badge-${badgeClass}">${roleDisplay}</span>
       </div>
     </div>
 
+    ${setupHtml}
     <ul class="sidebar-menu">
       ${menuHtml}
     </ul>
 
-    <div class="sidebar-footer">
-      <div class="role-switcher-container">
-        <label class="switcher-label">Switch Role:</label>
-        <select id="sidebarRoleSwitch" class="role-select" onchange="switchRole(this.value)">
-          <option value="guest" ${role === 'guest' ? 'selected' : ''}>Guest</option>
-          <option value="student" ${role === 'student' ? 'selected' : ''}>Student</option>
-          <option value="tutor" ${role === 'tutor' ? 'selected' : ''}>Tutor</option>
-          <option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>
-        </select>
+    <div class="sidebar-footer" style="padding: 1rem; border-top: 1px solid var(--color-muted); margin-top: auto;">
+
+      <div style="display: flex; flex-direction: column; gap: 0.5rem; align-items: center;">
+        <a href="#" onclick="event.preventDefault(); window.location.href='privacy-policy.html'; return false;" style="color: var(--color-text-secondary); font-size: 0.75rem; text-decoration: none; opacity: 0.8; pointer-events: auto; cursor: pointer;" onmouseover="this.style.opacity='1'; this.style.color='var(--color-primary)'" onmouseout="this.style.opacity='0.8'; this.style.color='var(--color-text-secondary)'">Privacy Policy</a>
+        <a href="#" onclick="event.preventDefault(); window.location.href='terms-of-service.html'; return false;" style="color: var(--color-text-secondary); font-size: 0.75rem; text-decoration: none; opacity: 0.8; pointer-events: auto; cursor: pointer;" onmouseover="this.style.opacity='1'; this.style.color='var(--color-primary)'" onmouseout="this.style.opacity='0.8'; this.style.color='var(--color-text-secondary)'">Terms of Service</a>
       </div>
     </div>
   `;
@@ -4678,6 +5800,8 @@ function renderSidebar() {
     // Re-render sidebar brand buttons immediately to avoid layout discrepancies
     renderSidebar();
   });
+
+  // Admin access removed from frontend
 
   // Mobile Hamburger & Overlay controllers
   const mobileHamburger = document.getElementById('mobile-hamburger');
@@ -4704,34 +5828,153 @@ function renderSidebar() {
   }
 }
 
-window.switchRole = (role) => {
-  if (role === 'guest') {
-    appData.setCurrentUser(null);
-    router.navigate('/');
-  } else if (role === 'student') {
-    appData.setCurrentUser({ name: 'Rahul Kumar', role: 'student', id: 'user1', avatar: '👤' });
-    router.navigate('/student-dashboard');
-  } else if (role === 'tutor') {
-    appData.setCurrentUser({ name: 'Priya Singh', role: 'tutor', id: 'tutor1', avatar: '👨‍🏫' });
-    router.navigate('/tutor-dashboard');
-  } else if (role === 'admin') {
-    appData.setCurrentUser({ name: 'Admin User', role: 'admin', id: 'admin1', avatar: '🛡️' });
-    router.navigate('/admin');
-  }
-  renderSidebar();
-};
 
-window.logout = () => {
-  appData.setCurrentUser(null);
-  renderSidebar();
-  router.navigate('/');
+// switchRole removed - was a dev-only tool that allowed client-side role impersonation
+
+window.logout = async () => {
+  try {
+    // Sign out from supabaseClient
+    await appData.signOut();
+    // Redirect to home page (guest view)
+    window.location.href = 'index.html';
+  } catch (error) {
+    console.error('Logout error:', error);
+    // Force redirect even if there's an error
+    window.location.href = 'index.html';
+  }
 };
 
 // ============================================================================
 // 7. APP INITIALIZATION
 // ============================================================================
 
-document.addEventListener('DOMContentLoaded', () => {
-  renderSidebar();
-  router.start();
+// ============================================================================
+// COOKIE CONSENT BANNER
+// ============================================================================
+function initCookieConsent() {
+  const STORAGE_KEY = 'aroosh_cookie_consent';
+  const consent = localStorage.getItem(STORAGE_KEY);
+  if (consent) {
+    if (consent === 'accepted') loadGoogleAnalytics();
+    return;
+  }
+
+  const banner = document.createElement('div');
+  banner.id = 'cookie-consent-banner';
+  banner.innerHTML = `
+    <div style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:var(--color-surface);border-top:1px solid var(--color-muted);padding:16px 24px;box-shadow:0 -4px 20px rgba(0,0,0,.15);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center;font-family:var(--font);animation:fadeUp .4s ease both;">
+      <span style="font-size:13px;color:var(--color-text-secondary);line-height:1.5;">We use cookies to enhance your experience and analyze site traffic via Google Analytics. You can choose to Accept or Decline.</span>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button id="cookie-accept" style="padding:8px 18px;border-radius:var(--radius-md);border:none;background:linear-gradient(135deg,var(--color-primary),var(--color-secondary));color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(138,48,127,.3);font-family:var(--font);">Accept</button>
+        <button id="cookie-decline" style="padding:8px 18px;border-radius:var(--radius-md);border:1.5px solid var(--color-muted);background:var(--color-background);color:var(--color-text-primary);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);">Decline</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(banner);
+
+  document.getElementById('cookie-accept').addEventListener('click', () => {
+    localStorage.setItem(STORAGE_KEY, 'accepted');
+    banner.remove();
+    loadGoogleAnalytics();
+  });
+
+  document.getElementById('cookie-decline').addEventListener('click', () => {
+    localStorage.setItem(STORAGE_KEY, 'declined');
+    banner.remove();
+  });
+}
+
+function loadGoogleAnalytics() {
+  if (window.gtagLoaded) return;
+  window.gtagLoaded = true;
+  const script = document.createElement('script');
+  script.async = true;
+  // TODO: Replace GA_MEASUREMENT_ID with your real Google Analytics ID
+  script.src = 'https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID';
+  document.head.appendChild(script);
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ window.dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('config', 'GA_MEASUREMENT_ID'); // TODO: Replace with real ID
+}
+
+// ============================================================================
+// APP INITIALIZATION
+// ============================================================================
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Initialize WhatsApp
+  window.whatsappComponent = new WhatsAppComponent({
+    phoneNumber: '+923354979890'
+  });
+
+  // Ensure app is initialized before proceeding
+  if (!appData) {
+    console.warn('[App] appData not initialized, waiting...');
+    setTimeout(async () => {
+      if (appData) {
+        await startApp();
+      } else {
+        console.error('[App] Failed to initialize appData');
+      }
+    }, 200);
+  } else {
+    await startApp();
+  }
 });
+
+async function startApp() {
+  // Wait for auth session check (max 3s) before rendering anything
+  if (appData) {
+    const authTimeout = new Promise(resolve => setTimeout(resolve, 3000));
+    await Promise.race([appData._authReady, authTimeout]);
+  }
+  renderSidebar();
+  try {
+    await router.start();
+  } catch(routerErr) {
+    console.error('[App] Router start error:', routerErr);
+    // Show a friendly fallback if home page crashes
+    const appDiv = document.getElementById('app');
+    if (appDiv && !appDiv.innerHTML.trim()) {
+      appDiv.innerHTML = `<div class="container" style="padding:3rem;text-align:center;">
+        <h2>Loading...</h2><p>Please refresh the page.</p>
+        <button class="btn btn-primary" onclick="location.reload()">Refresh</button>
+      </div>`;
+    }
+  }
+  initCookieConsent();
+
+  // Always hide loading screen regardless of whether router succeeded
+  const loadingScreen = document.getElementById('loading-screen');
+  function hideLoadingScreen() {
+    if (!loadingScreen) return;
+    loadingScreen.classList.add('fade-out');
+    setTimeout(() => { if (loadingScreen && loadingScreen.parentNode) loadingScreen.remove(); }, 400);
+  }
+  setTimeout(hideLoadingScreen, 600);
+  setTimeout(() => { if (loadingScreen && loadingScreen.parentNode) loadingScreen.remove(); }, 4000);
+
+  // Auth redirect
+  setTimeout(() => {
+    if (!appData) {
+      console.warn('[App] appData still not initialized in redirect check');
+      return;
+    }
+    const user = appData.getCurrentUser();
+    console.log('[App] Redirect check — currentUser:', user);
+    if (user) {
+      const hash = window.location.hash.slice(1) || '/';
+      if (hash === '/' || hash === '') {
+        const role = user.role;
+        console.log('[App] Redirecting to dashboard for role:', role);
+        if (role === 'student') router.navigate('/student-dashboard');
+        else if (role === 'tutor') router.navigate('/tutor-dashboard');
+        else if (role === 'admin') router.navigate('/admin');
+      }
+    }
+  }, 300);
+
+  // Loading screen handled above
+}
+
