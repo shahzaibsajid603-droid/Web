@@ -1529,7 +1529,7 @@ section.bg-surface {
    ============================================================================ */
 
 .hero {
-  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+  background-image: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
   background-size: 400% 400%;
   animation: heroGradient 15s ease infinite;
   color: white;
@@ -4872,7 +4872,7 @@ body.dark-mode .session-item:hover {
 
 /* Hero section overrides */
 .hero {
-  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab) !important;
+  background-image: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab) !important;
   background-size: 400% 400% !important;
   animation: heroGradient 15s ease infinite !important;
   min-height: 85vh;
