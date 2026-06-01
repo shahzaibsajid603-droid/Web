@@ -1173,103 +1173,7 @@ const UI = {
 // 4. PAGE RENDERERS
 // ============================================================================
 
-// Hero Particle Animation Function
-function initHeroParticles() {
-  const canvas = document.getElementById('hero-canvas');
-  if (!canvas) return null;
 
-  const ctx = canvas.getContext('2d');
-  let animationFrameId = null;
-
-  // Resize canvas to match display size
-  function resizeCanvas() {
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-  }
-
-  resizeCanvas();
-
-  // Create particles
-  const particles = [];
-  const particleCount = 80;
-
-  for (let i = 0; i < particleCount; i++) {
-    particles.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      size: Math.random() * 4 + 1, // 1-5px
-      speedX: (Math.random() - 0.5) * 0.5, // Random drift speed
-      speedY: (Math.random() - 0.5) * 0.5,
-      opacity: Math.random() * 0.5 + 0.1 // 0.1-0.6
-    });
-  }
-
-  // Animation loop
-  function animate() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Update and draw particles
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-
-      // Move particle
-      p.x += p.speedX;
-      p.y += p.speedY;
-
-      // Wrap around edges
-      if (p.x < 0) p.x = canvas.width;
-      if (p.x > canvas.width) p.x = 0;
-      if (p.y < 0) p.y = canvas.height;
-      if (p.y > canvas.height) p.y = 0;
-
-      // Draw particle
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(13, 148, 136, ${p.opacity})`;
-      ctx.fill();
-    }
-
-    // Draw connection lines
-    for (let i = 0; i < particles.length; i++) {
-      for (let j = i + 1; j < particles.length; j++) {
-        const dx = particles[i].x - particles[j].x;
-        const dy = particles[i].y - particles[j].y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < 120) {
-          const opacity = (1 - distance / 120) * 0.3;
-          ctx.beginPath();
-          ctx.moveTo(particles[i].x, particles[i].y);
-          ctx.lineTo(particles[j].x, particles[j].y);
-          ctx.strokeStyle = `rgba(13, 148, 136, ${opacity})`;
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-      }
-    }
-
-    animationFrameId = requestAnimationFrame(animate);
-  }
-
-  animate();
-
-  // Handle window resize
-  const handleResize = () => {
-    resizeCanvas();
-  };
-  window.addEventListener('resize', handleResize);
-
-  // Cleanup function
-  function cleanup() {
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
-    }
-    window.removeEventListener('resize', handleResize);
-  }
-
-  return cleanup;
-}
 
 // AUTH / ROLE GUARDS
 function requireRole(allowedRoles) {
@@ -1314,33 +1218,27 @@ async function renderHome() {
   const isGuest = !user;
 
   const html = `
-    <div class="hero" style="position: relative; overflow: hidden;">
-      <canvas id="hero-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;"></canvas>
-      <div class="hero-shapes" style="position: relative; z-index: 1;">
-        <div class="hero-shape hero-shape-1"></div>
-        <div class="hero-shape hero-shape-2"></div>
-        <div class="hero-shape hero-shape-3"></div>
-      </div>
-      <div class="container" style="position: relative; z-index: 1;">
-        <div class="hero-content" style="position: relative; z-index: 1; ">
-          <h1 style="">Expert Online Tutoring for Every Subject</h1>
-          <p style="">Connect with qualified tutors, learn at your own pace, and achieve your learning goals</p>
+    <div class="hero">
+      <div class="container">
+        <div class="hero-content">
+          <h1>Expert Online Tutoring for Every Subject</h1>
+          <p>Connect with qualified tutors, learn at your own pace, and achieve your learning goals</p>
           <div class="hero-cta">
-            <button class="btn btn-secondary" onclick="router.navigate('/tutors')" style="">Find Tutors</button>
-            <button class="btn btn-outline" onclick="router.navigate('/role-selection')" style="">Sign Up Free</button>
+            <button class="btn btn-secondary" onclick="router.navigate('/tutors')">Find Tutors</button>
+            <button class="btn btn-outline" onclick="router.navigate('/role-selection')">Sign Up Free</button>
           </div>
-          <div class="hero-stats" style="">
+          <div class="hero-stats">
             <div class="stat-card">
-              <div class="stat-number" id="statTutors" style="">0+</div>
-              <div class="stat-label" style="font-family: 'Inter', sans-serif; font-weight: 500;">Expert Tutors</div>
+              <div class="stat-number" id="statTutors">0+</div>
+              <div class="stat-label">Expert Tutors</div>
             </div>
             <div class="stat-card">
-              <div class="stat-number" id="statStudents" style="">0K+</div>
-              <div class="stat-label" style="font-family: 'Inter', sans-serif; font-weight: 500;">Active Students</div>
+              <div class="stat-number" id="statStudents">0K+</div>
+              <div class="stat-label">Active Students</div>
             </div>
             <div class="stat-card">
-              <div class="stat-number" id="statSubjects" style="">0+</div>
-              <div class="stat-label" style="font-family: 'Inter', sans-serif; font-weight: 500;">Subjects</div>
+              <div class="stat-number" id="statSubjects">0+</div>
+              <div class="stat-label">Subjects</div>
             </div>
           </div>
         </div>
@@ -1543,13 +1441,7 @@ async function renderHome() {
   `;
   UI.setContent(html);
 
-  // Initialize hero particle animation
-  setTimeout(() => {
-    const cleanup = initHeroParticles();
-    if (cleanup) {
-      window.addEventListener('hashchange', cleanup, { once: true });
-    }
-  }, 0);
+
 
   // Scroll reveal + parallax + counters
   requestAnimationFrame(() => {

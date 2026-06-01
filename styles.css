@@ -264,6 +264,7 @@ body {
   color: var(--color-text-primary);
   background-color: var(--color-background);
   line-height: 1.6;
+  overflow-x: hidden;
 }
 
 a {
@@ -1528,47 +1529,26 @@ section.bg-surface {
    ============================================================================ */
 
 .hero {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+  background-size: 400% 400%;
+  animation: heroGradient 15s ease infinite;
   color: white;
   padding: var(--spacing-3xl) 0;
   position: relative;
   overflow: hidden;
+  min-height: 85vh;
+  display: flex;
+  align-items: center;
 }
 
-.hero-shapes {
-  position: absolute;
+@keyframes heroGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.hero .container {
   width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  opacity: 0.1;
-}
-
-.hero-shape {
-  position: absolute;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.hero-shape-1 {
-  width: 300px;
-  height: 300px;
-  top: -100px;
-  right: -100px;
-}
-
-.hero-shape-2 {
-  width: 200px;
-  height: 200px;
-  bottom: -50px;
-  left: 10%;
-}
-
-.hero-shape-3 {
-  width: 150px;
-  height: 150px;
-  top: 50%;
-  left: 5%;
 }
 
 .hero-content {
@@ -1578,6 +1558,8 @@ section.bg-surface {
   flex-direction: column;
   align-items: center;
   text-align: center;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .hero h1 {
@@ -1590,6 +1572,7 @@ section.bg-surface {
   font-size: var(--font-size-xl);
   margin-bottom: var(--spacing-2xl);
   color: rgba(255, 255, 255, 0.9);
+  max-width: 600px;
 }
 
 .hero-cta {
@@ -1600,9 +1583,10 @@ section.bg-surface {
 }
 
 .hero-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
   gap: var(--spacing-lg);
+  flex-wrap: wrap;
+  justify-content: center;
   margin-top: var(--spacing-3xl);
 }
 
@@ -2686,23 +2670,30 @@ section.bg-surface {
   }
 
   .hero {
-    padding: var(--spacing-2xl) 0;
+    padding: var(--spacing-xl) var(--spacing-md);
+    min-height: 70vh;
   }
 
   .hero h1 {
-    font-size: var(--font-size-3xl);
+    font-size: clamp(1.5rem, 7vw, 2.2rem);
+    line-height: 1.2;
   }
 
   .hero p {
     font-size: var(--font-size-base);
+    padding: 0 0.5rem;
   }
 
   .hero-stats {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
   }
 
   .hero-cta {
     flex-direction: column;
+    width: 100%;
+    padding: 0 1rem;
   }
 
   .hero-cta .btn {
@@ -4668,21 +4659,7 @@ body.dark-mode .session-item:hover {
 .scroll-reveal-stagger.revealed > *:nth-child(5) { transition-delay: 0.45s; opacity: 1; transform: none; }
 .scroll-reveal-stagger.revealed > *:nth-child(6) { transition-delay: 0.55s; opacity: 1; transform: none; }
 
-/* Floating animation for hero elements */
-@keyframes floatA {
-  0%,100% { transform: translateY(0px) rotate(0deg); }
-  50% { transform: translateY(-16px) rotate(1deg); }
-}
 
-@keyframes floatB {
-  0%,100% { transform: translateY(0px) rotate(0deg); }
-  50% { transform: translateY(-12px) rotate(-1deg); }
-}
-
-.hero-blob {
-  will-change: transform;
-  pointer-events: none;
-}
 
 /* Premium hero stat cards (glassmorphism) */
 .stat-card {
@@ -4722,27 +4699,28 @@ body.dark-mode .session-item:hover {
 
 /* Hero buttons upgrade */
 .hero-cta .btn-secondary {
-  background: var(--gradient-primary);
-  color: white;
+  background: rgba(255,255,255,0.95);
+  color: #e73c7e;
   border: none;
   padding: 0.875rem 2rem;
   border-radius: var(--radius-xl);
   font-size: 1rem;
   font-weight: 700;
-  box-shadow: var(--glow-primary);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
   transition: all 0.3s ease;
   font-family: var(--font-body);
 }
 
 .hero-cta .btn-secondary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 36px rgba(138,48,127,0.5);
+  background: #ffffff;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.2);
 }
 
 .hero-cta .btn-outline {
-  border: 1.5px solid rgba(255,255,255,0.4);
+  border: 2px solid rgba(255,255,255,0.7);
   color: white !important;
-  background: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.1);
   backdrop-filter: blur(8px);
   padding: 0.875rem 2rem;
   border-radius: var(--radius-xl);
@@ -4753,8 +4731,8 @@ body.dark-mode .session-item:hover {
 }
 
 .hero-cta .btn-outline:hover {
-  background: rgba(255,255,255,0.15);
-  border-color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.25);
+  border-color: #ffffff;
 }
 
 /* Tutor card enhancement */
@@ -4894,31 +4872,35 @@ body.dark-mode .session-item:hover {
 
 /* Hero section overrides */
 .hero {
-  background: var(--gradient-hero) !important;
-  min-height: 92vh;
+  background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab) !important;
+  background-size: 400% 400% !important;
+  animation: heroGradient 15s ease infinite !important;
+  min-height: 85vh;
   display: flex;
   align-items: center;
 }
 
 .hero h1 {
-  background: linear-gradient(135deg, #ffffff 0%, #d4b8e0 50%, #a8c8e8 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
   font-size: clamp(2rem, 5vw, 3.2rem);
-  line-height: 1.12;
+  line-height: 1.15;
+  font-weight: 700;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
 
 .hero p {
-  color: rgba(255,255,255,0.8);
+  color: rgba(255,255,255,0.9);
   font-family: var(--font-body);
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
 }
 
 .hero-stats {
   display: flex;
-  gap: 1rem;
+  gap: 1.5rem;
   flex-wrap: wrap;
-  margin-top: 2rem;
+  justify-content: center;
+  margin-top: 2.5rem;
 }
 
 /* Dark mode card fix */
